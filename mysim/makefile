@@ -28,7 +28,7 @@ default : all
 ###############################################################################
 #ENVIRONMENTS = modelsim/ase/10.1b
 ENVIRONMENTS = aldec/riviera
-GLOBAL_INCS  = ../make_includes
+GLOBAL_INCS  = ../../global_makefiles
 
 # This makefile(s) containing the testcases
 CONFIG_FILES 	= makefile
