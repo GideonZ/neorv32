@@ -83,7 +83,7 @@ architecture neorv32_pwm_rtl of neorv32_pwm is
 
   -- accessible regs --
   type pwm_ch_t is array (0 to NUM_CHANNELS-1) of std_ulogic_vector(7 downto 0);
-  signal pwm_ch : pwm_ch_t; -- duty cycle (r/w)
+  signal pwm_ch : pwm_ch_t := (others => (others => '0')); -- duty cycle (r/w)
   signal enable : std_ulogic; -- enable unit (r/w)
   signal prsc   : std_ulogic_vector(2 downto 0); -- clock prescaler (r/w)
 

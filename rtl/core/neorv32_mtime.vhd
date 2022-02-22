@@ -76,12 +76,12 @@ architecture neorv32_mtime_rtl of neorv32_mtime is
   signal mtime_hi_we : std_ulogic;
 
   -- accessible regs --
-  signal mtimecmp_lo   : std_ulogic_vector(31 downto 0);
-  signal mtimecmp_hi   : std_ulogic_vector(31 downto 0);
-  signal mtime_lo      : std_ulogic_vector(31 downto 0);
-  signal mtime_lo_nxt  : std_ulogic_vector(32 downto 0);
-  signal mtime_lo_ovfl : std_ulogic_vector(00 downto 0);
-  signal mtime_hi      : std_ulogic_vector(31 downto 0);
+  signal mtimecmp_lo   : std_ulogic_vector(31 downto 0) := (others => '0');
+  signal mtimecmp_hi   : std_ulogic_vector(31 downto 0) := (others => '0');
+  signal mtime_lo      : std_ulogic_vector(31 downto 0) := (others => '0');
+  signal mtime_lo_nxt  : std_ulogic_vector(32 downto 0) := (others => '0');
+  signal mtime_lo_ovfl : std_ulogic_vector(00 downto 0) := (others => '0');
+  signal mtime_hi      : std_ulogic_vector(31 downto 0) := (others => '0');
 
   -- comparators --
   signal cmp_lo_ge    : std_ulogic;
