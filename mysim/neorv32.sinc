@@ -10,8 +10,8 @@ vhdl,neorv32,neorv32_package.vhd
 vhdl,neorv32,neorv32_dmem.default.vhd
 vhdl,neorv32,neorv32_imem.default.vhd
 vhdl,neorv32,neorv32_application_image.vhd
-vhdl,neorv32,neorv32_bootloader_image.vhd
-vhdl,neorv32,neorv32_boot_rom.vhd,neorv32_bootloader_image.vhd
+vhdl,neorv32,neorv32_bootloader_image2.vhd
+vhdl,neorv32,neorv32_boot_rom.vhd,neorv32_bootloader_image2.vhd
 vhdl,neorv32,neorv32_bus_keeper.vhd
 vhdl,neorv32,neorv32_busswitch.vhd
 vhdl,neorv32,neorv32_cfs.vhd

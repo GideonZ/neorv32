@@ -58,6 +58,15 @@ AUTO_DEP_PATHS =  testbench
 AUTO_DEP_PATHS += ../rtl/core
 AUTO_DEP_PATHS += ../rtl/core/mem
 AUTO_DEP_PATHS += ../rtl/processor_templates
+AUTO_DEP_PATHS += ../../fpga/ip/busses/vhdl_source
+AUTO_DEP_PATHS += ../../fpga/ip/busses/vhdl_bfm
+AUTO_DEP_PATHS += ../../target/simulation/packages/vhdl_source
+AUTO_DEP_PATHS += ../../fpga/cpu_unit/vhdl_source
+AUTO_DEP_PATHS += ../../fpga/ip/clock/vhdl_source
+AUTO_DEP_PATHS += ../../fpga/io/itu/vhdl_source
+AUTO_DEP_PATHS += ../../fpga/io/uart_lite/vhdl_source
+AUTO_DEP_PATHS += ../../fpga/ip/srl_fifo/vhdl_source
+AUTO_DEP_PATHS += ../../fpga/ip/sync_fifo/vhdl_source
 
 MODELSIM_NO_WARNINGS := set NumericStdNoWarnings 1
 
@@ -99,6 +108,14 @@ $(TESTBENCH)_DO_GUI_BEFORE      :=
 $(TESTBENCH)_DO_GUI_AFTER       :=
 $(TESTBENCH)_DO_GUI_OVERRIDE    :=
 
+TESTBENCH                       := neorv32_boot_appl
+TESTBENCHES                     := $(TESTBENCHES) $(TESTBENCH)
+$(TESTBENCH)_SRC                := $(TESTBENCH).vhd
+$(TESTBENCH)_ENTITY             := $(TESTBENCH)
+$(TESTBENCH)_TIME               := 100 us
+$(TESTBENCH)_DO_GUI_BEFORE      :=
+$(TESTBENCH)_DO_GUI_AFTER       :=
+$(TESTBENCH)_DO_GUI_OVERRIDE    :=
 
 ###############################################################################
 #### Testcases
@@ -189,7 +206,7 @@ info: 	vsim-info
 #tl_stream_bus_sync_buffer.vc : tl_sync_fifo_ft-plain.vc
 
 neorv32_top : neorv32_dmem.default neorv32_imem.default
-
+uart_peripheral_io.vc : srl_fifo-generic.vc
 
 ###############################################################################
 #### WARNING!!
