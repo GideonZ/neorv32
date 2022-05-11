@@ -152,7 +152,7 @@ __crt0_reset_io_loop:
 
 
 // ************************************************************************************************
-// Clear .bss section (byte-wise) using linker script symbols
+// Clear .bss section (word-wise) using linker script symbols
 // ************************************************************************************************
 __crt0_clear_bss:
   la   x11,  __crt0_bss_start
@@ -160,15 +160,15 @@ __crt0_clear_bss:
 
 __crt0_clear_bss_loop:
   bge  x11,  x12, __crt0_clear_bss_loop_end
-  sb   zero, 0(x11)
-  addi x11,  x11, 1
+  sw   zero, 0(x11)
+  addi x11,  x11, 4
   j    __crt0_clear_bss_loop
 
 __crt0_clear_bss_loop_end:
 
 
 // ************************************************************************************************
-// Copy initialized .data section from ROM to RAM (byte-wise) using linker script symbols
+// Copy initialized .data section from ROM to RAM (word-wise) using linker script symbols
 // ************************************************************************************************
 __crt0_copy_data:
   la   x11, __crt0_copy_data_src_begin        // start of data area (copy source)
@@ -178,10 +178,10 @@ __crt0_copy_data:
 
 __crt0_copy_data_loop:
   bge  x12, x13,  __crt0_copy_data_loop_end
-  lb   x14, 0(x11)
-  sb   x14, 0(x12)
-  addi x11, x11, 1
-  addi x12, x12, 1
+  lw   x14, 0(x11)
+  sw   x14, 0(x12)
+  addi x11, x11, 4
+  addi x12, x12, 4
   j    __crt0_copy_data_loop
 
 __crt0_copy_data_loop_end:
