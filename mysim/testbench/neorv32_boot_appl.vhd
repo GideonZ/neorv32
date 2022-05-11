@@ -107,7 +107,7 @@ begin
     i_mem: entity work.mem_bus_32_slave_bfm
     generic map (
         g_name    => "ram",
-        g_latency => 1
+        g_latency => 16
     )
     port map(
         clock     => sys_clock,
@@ -120,7 +120,8 @@ begin
     begin
         wait for 1 ns;
         bind_mem_model("ram", mem);
-        load_memory("../../target/software/riscv32_ultimate/result/ultimate.bin", mem, X"00030000" );
+        --load_memory("../../target/software/riscv32_ultimate/result/ultimate.bin", mem, X"00030000" );
+        load_memory("../../target/software/riscv32_rtos/result/free_rtos_demo.bin", mem, X"00030000" );
         wait;
     end process;
     
