@@ -33,7 +33,3 @@ sw/image_gen/image_gen.exe
 # compiled ghdl stuff
 *.cf
 *.o
-
-# riscv-arch-test
-
-/sim/work/

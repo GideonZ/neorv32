@@ -35,7 +35,6 @@
 
 /**********************************************************************//**
  * @file neorv32_cpu_cfu.c
- * @author Stephan Nolting
  * @brief CPU Core custom functions unit HW driver source file.
  **************************************************************************/
 
@@ -51,7 +50,7 @@
 int neorv32_cpu_cfu_available(void) {
 
   // this is an ISA extension - not a SoC module
-  if (NEORV32_SYSINFO.CPU & (1 << SYSINFO_CPU_ZXCFU)) {
+  if (neorv32_cpu_csr_read(CSR_MXISA) & (1 << CSR_MXISA_ZXCFU)) {
     return 1;
   }
   else {

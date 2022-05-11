@@ -73,11 +73,10 @@ entity neorv32_wishbone is
     ben_i      : in  std_ulogic_vector(03 downto 0); -- byte write enable
     data_i     : in  std_ulogic_vector(31 downto 0); -- data in
     data_o     : out std_ulogic_vector(31 downto 0); -- data out
-    lock_i     : in  std_ulogic; -- exclusive access request
     ack_o      : out std_ulogic; -- transfer acknowledge
     err_o      : out std_ulogic; -- transfer error
     tmo_o      : out std_ulogic; -- transfer timeout
-    priv_i     : in  std_ulogic_vector(01 downto 0); -- current CPU privilege level
+    priv_i     : in  std_ulogic; -- current CPU privilege level
     ext_o      : out std_ulogic; -- active external access
     -- xip configuration --
     xip_en_i   : in  std_ulogic; -- XIP module enabled
@@ -91,7 +90,6 @@ entity neorv32_wishbone is
     wb_sel_o   : out std_ulogic_vector(03 downto 0); -- byte enable
     wb_stb_o   : out std_ulogic; -- strobe
     wb_cyc_o   : out std_ulogic; -- valid cycle
-    wb_lock_o  : out std_ulogic; -- exclusive access request
     wb_ack_i   : in  std_ulogic; -- transfer acknowledge
     wb_err_i   : in  std_ulogic  -- transfer error
   );
@@ -124,8 +122,7 @@ architecture neorv32_wishbone_rtl of neorv32_wishbone is
     tmo      : std_ulogic;
     timeout  : std_ulogic_vector(index_size_f(BUS_TIMEOUT) downto 0);
     src      : std_ulogic;
-    lock     : std_ulogic;
-    priv     : std_ulogic_vector(01 downto 0);
+    priv     : std_ulogic;
   end record;
   signal ctrl    : ctrl_t;
   signal stb_int : std_ulogic;
@@ -187,8 +184,7 @@ begin
       ctrl.err      <= def_rst_val_c;
       ctrl.tmo      <= def_rst_val_c;
       ctrl.src      <= def_rst_val_c;
-      ctrl.lock     <= def_rst_val_c;
-      ctrl.priv     <= (others => def_rst_val_c);
+      ctrl.priv     <= def_rst_val_c;
     elsif rising_edge(clk_i) then
       -- defaults --
       ctrl.state_ff <= ctrl.state;
@@ -214,7 +210,6 @@ begin
             ctrl.sel  <= ben_i;
           end if;
           ctrl.src  <= src_i;
-          ctrl.lock <= lock_i;
           ctrl.priv <= priv_i;
           -- valid new or buffered read/write request --
           if ((xbus_access and (wren_i or rden_i)) = '1') then
@@ -263,8 +258,6 @@ begin
   wb_tag_o(0) <= '0' when (ctrl.priv = priv_mode_u_c) else '1'; -- unprivileged access when in user mode
   wb_tag_o(1) <= '0'; -- 0 = secure, 1 = non-secure
   wb_tag_o(2) <= ctrl.src; -- 0 = data access, 1 = instruction access
-
-  wb_lock_o <= ctrl.lock; -- 1 = exclusive access request
 
   wb_adr_o <= ctrl.adr;
   wb_dat_o <= ctrl.wdat;

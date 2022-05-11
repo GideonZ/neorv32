@@ -35,7 +35,6 @@
 
 /**********************************************************************//**
  * @file neorv32_uart.c
- * @author Stephan Nolting
  * @brief Universal asynchronous receiver/transmitter (UART0/UART1) HW driver source file.
  *
  * @warning UART0 (primary UART) is used as default user console interface for all NEORV32 software framework/library functions.
@@ -54,6 +53,34 @@ static void __neorv32_uart_itoa(uint32_t x, char *res) __attribute__((unused)); 
 static void __neorv32_uart_tohex(uint32_t x, char *res) __attribute__((unused)); // GCC: do not output a warning when this variable is unused
 static void __neorv32_uart_touppercase(uint32_t len, char *ptr) __attribute__((unused)); // GCC: do not output a warning when this variable is unused
 /// \endcond
+
+
+// #################################################################################################
+// Override default STDIO functions
+// #################################################################################################
+
+/**********************************************************************//**
+ * Send char via UART0
+ *
+ * @param[in] Char to be send.
+ * @return Char that has been sent.
+ **************************************************************************/
+int putchar(int ch) {
+
+  neorv32_uart0_putc((char)ch);
+  return ch;
+}
+
+
+/**********************************************************************//**
+ * Read char from UART0.
+ *
+ * @return Read char.
+ **************************************************************************/
+int getchar(void) {
+
+  return (int)neorv32_uart0_getc();
+}
 
 
 // #################################################################################################

@@ -1,7 +1,7 @@
 -- #################################################################################################
 -- # << NEORV32 - Arithmetical/Logical Unit >>                                                     #
 -- # ********************************************************************************************* #
--- # Main data/address ALU and ALU co-processor (= multi-cycle function units).                    #
+-- # Main data/address ALU and ALU co-processors (= multi-cycle function units).                   #
 -- # ********************************************************************************************* #
 -- # BSD 3-Clause License                                                                          #
 -- #                                                                                               #
@@ -62,9 +62,7 @@ entity neorv32_cpu_alu is
     rs1_i       : in  std_ulogic_vector(data_width_c-1 downto 0); -- rf source 1
     rs2_i       : in  std_ulogic_vector(data_width_c-1 downto 0); -- rf source 2
     pc_i        : in  std_ulogic_vector(data_width_c-1 downto 0); -- current PC
-    pc2_i       : in  std_ulogic_vector(data_width_c-1 downto 0); -- next PC
     imm_i       : in  std_ulogic_vector(data_width_c-1 downto 0); -- immediate
-    csr_i       : in  std_ulogic_vector(data_width_c-1 downto 0); -- CSR read data
     -- data output --
     cmp_o       : out std_ulogic_vector(1 downto 0); -- comparator status
     res_o       : out std_ulogic_vector(data_width_c-1 downto 0); -- ALU result
@@ -85,24 +83,15 @@ architecture neorv32_cpu_cpu_rtl of neorv32_cpu_alu is
   -- operands --
   signal opa, opb : std_ulogic_vector(data_width_c-1 downto 0);
 
-  -- results --
+  -- intermediate results --
   signal addsub_res : std_ulogic_vector(data_width_c downto 0);
-  signal alu_res    : std_ulogic_vector(data_width_c-1 downto 0);
   signal cp_res     : std_ulogic_vector(data_width_c-1 downto 0);
 
-  -- co-processor arbiter and interface --
-  type cp_ctrl_t is record
-    cmd    : std_ulogic;
-    cmd_ff : std_ulogic;
-    start  : std_ulogic;
-  end record;
-  signal cp_ctrl : cp_ctrl_t;
-
   -- co-processor interface --
-  type cp_data_if_t  is array (0 to 7)  of std_ulogic_vector(data_width_c-1 downto 0);
-  signal cp_result : cp_data_if_t; -- co-processor result
-  signal cp_start  : std_ulogic_vector(7 downto 0); -- trigger co-processor i
-  signal cp_valid  : std_ulogic_vector(7 downto 0); -- co-processor i done
+  type cp_data_if_t  is array (0 to 5) of std_ulogic_vector(data_width_c-1 downto 0);
+  signal cp_result : cp_data_if_t; -- co-processor i result
+  signal cp_start  : std_ulogic_vector(5 downto 0); -- trigger co-processor i
+  signal cp_valid  : std_ulogic_vector(5 downto 0); -- co-processor i done
 
 begin
 
@@ -112,39 +101,38 @@ begin
   cmp_opy <= (rs2_i(rs2_i'left) and (not ctrl_i(ctrl_alu_unsigned_c))) & rs2_i;
 
   cmp(cmp_equal_c) <= '1' when (rs1_i = rs2_i) else '0';
-  cmp(cmp_less_c)  <= '1' when (signed(cmp_opx) < signed(cmp_opy)) else '0';
+  cmp(cmp_less_c)  <= '1' when (signed(cmp_opx) < signed(cmp_opy)) else '0'; -- signed or unsigned comparison
   cmp_o            <= cmp;
 
 
-  -- ALU Input Operand Mux ------------------------------------------------------------------
+  -- ALU Input Operand Select ---------------------------------------------------------------
   -- -------------------------------------------------------------------------------------------
-  opa <= pc_i  when (ctrl_i(ctrl_alu_opa_mux_c) = '1') else rs1_i; -- operand a (first ALU input operand), only required for arithmetic ops
-  opb <= imm_i when (ctrl_i(ctrl_alu_opb_mux_c) = '1') else rs2_i; -- operand b (second ALU input operand)
+  opa <= pc_i  when (ctrl_i(ctrl_alu_opa_mux_c) = '1') else rs1_i;
+  opb <= imm_i when (ctrl_i(ctrl_alu_opb_mux_c) = '1') else rs2_i;
 
 
-  -- Binary Adder/Subtracter ----------------------------------------------------------------
+  -- Adder/Subtracter Core ------------------------------------------------------------------
   -- -------------------------------------------------------------------------------------------
-  binary_arithmetic_core: process(ctrl_i, opa, opb)
-    variable cin_v  : std_ulogic_vector(0 downto 0);
-    variable op_a_v : std_ulogic_vector(data_width_c downto 0);
-    variable op_b_v : std_ulogic_vector(data_width_c downto 0);
-    variable op_y_v : std_ulogic_vector(data_width_c downto 0);
-    variable res_v  : std_ulogic_vector(data_width_c downto 0);
+  arithmetic_core: process(ctrl_i, opa, opb)
+    variable cin_v : std_ulogic_vector(0 downto 0);
+    variable opa_v : std_ulogic_vector(data_width_c downto 0);
+    variable opb_v : std_ulogic_vector(data_width_c downto 0);
+    variable opy_v : std_ulogic_vector(data_width_c downto 0);
   begin
     -- operand sign-extension --
-    op_a_v := (opa(opa'left) and (not ctrl_i(ctrl_alu_unsigned_c))) & opa;
-    op_b_v := (opb(opb'left) and (not ctrl_i(ctrl_alu_unsigned_c))) & opb;
+    opa_v := (opa(opa'left) and (not ctrl_i(ctrl_alu_unsigned_c))) & opa;
+    opb_v := (opb(opb'left) and (not ctrl_i(ctrl_alu_unsigned_c))) & opb;
     -- add/sub(slt) select --
     if (ctrl_i(ctrl_alu_op0_c) = '1') then -- subtraction
-      op_y_v   := not op_b_v;
+      opy_v    := not opb_v;
       cin_v(0) := '1';
     else -- addition
-      op_y_v   := op_b_v;
+      opy_v    := opb_v;
       cin_v(0) := '0';
     end if;
     -- adder core --
-    addsub_res <= std_ulogic_vector(unsigned(op_a_v) + unsigned(op_y_v) + unsigned(cin_v(0 downto 0)));
-  end process binary_arithmetic_core;
+    addsub_res <= std_ulogic_vector(unsigned(opa_v) + unsigned(opy_v) + unsigned(cin_v(0 downto 0)));
+  end process arithmetic_core;
 
   -- direct output of adder result --
   add_o <= addsub_res(data_width_c-1 downto 0);
@@ -152,76 +140,40 @@ begin
 
   -- ALU Operation Select -------------------------------------------------------------------
   -- -------------------------------------------------------------------------------------------
-  alu_core: process(ctrl_i, addsub_res, rs1_i, opb)
+  alu_core: process(ctrl_i, addsub_res, cp_res, rs1_i, opb)
   begin
     case ctrl_i(ctrl_alu_op2_c downto ctrl_alu_op0_c) is
-      when alu_op_add_c  => alu_res <= addsub_res(data_width_c-1 downto 0); -- (default)
-      when alu_op_sub_c  => alu_res <= addsub_res(data_width_c-1 downto 0);
---    when alu_op_mova_c => alu_res <= rs1_i; -- FIXME
-      when alu_op_slt_c  => alu_res <= (others => '0'); alu_res(0) <= addsub_res(addsub_res'left); -- => carry/borrow
-      when alu_op_movb_c => alu_res <= opb;
-      when alu_op_xor_c  => alu_res <= rs1_i xor opb; -- only rs1 required for logic ops (opa would also contain pc)
-      when alu_op_or_c   => alu_res <= rs1_i or  opb;
-      when alu_op_and_c  => alu_res <= rs1_i and opb;
-      when others        => alu_res <= addsub_res(data_width_c-1 downto 0);
+      when alu_op_add_c  => res_o <= addsub_res(data_width_c-1 downto 0); -- default
+      when alu_op_sub_c  => res_o <= addsub_res(data_width_c-1 downto 0);
+      when alu_op_cp_c   => res_o <= cp_res;
+      when alu_op_slt_c  => res_o <= (others => '0'); res_o(0) <= addsub_res(addsub_res'left); -- carry/borrow
+      when alu_op_movb_c => res_o <= opb;
+      when alu_op_xor_c  => res_o <= rs1_i xor opb; -- only rs1 required for logic ops (opa would also contain pc)
+      when alu_op_or_c   => res_o <= rs1_i or  opb;
+      when alu_op_and_c  => res_o <= rs1_i and opb;
+      when others        => res_o <= addsub_res(data_width_c-1 downto 0); -- don't care
     end case;
   end process alu_core;
 
-  -- ALU Function Select --------------------------------------------------------------------
-  -- -------------------------------------------------------------------------------------------
-  alu_function_mux: process(ctrl_i, alu_res, pc2_i, csr_i, cp_res)
-  begin
-    case ctrl_i(ctrl_alu_func1_c downto ctrl_alu_func0_c) is
-      when alu_func_core_c  => res_o <= alu_res; -- (default)
-      when alu_func_nxpc_c  => res_o <= pc2_i;
-      when alu_func_csrr_c  => res_o <= csr_i;
-      when alu_func_copro_c => res_o <= cp_res;
-      when others           => res_o <= alu_res; -- undefined
-    end case;
-  end process alu_function_mux;
-
 
   -- **************************************************************************************************************************
-  -- CPU Co-Processors
+  -- ALU Co-Processors
   -- **************************************************************************************************************************
-
-  -- Co-Processor Interface --
-  -- Co-processor "valid" signal has to be asserted (for one cycle) one cycle before asserting output data
-  -- Co-processor "output data" has to be always zero unless co-processor was explicitly triggered
-
-  -- Co-Processor Arbiter -------------------------------------------------------------------
-  -- -------------------------------------------------------------------------------------------
-  cp_arbiter: process(rstn_i, clk_i)
-  begin
-    if (rstn_i = '0') then
-      cp_ctrl.cmd_ff <= '0';
-    elsif rising_edge(clk_i) then
-      cp_ctrl.cmd_ff <= cp_ctrl.cmd;
-    end if;
-  end process cp_arbiter;
-
-  -- is co-processor operation? --
-  cp_ctrl.cmd   <= '1' when (ctrl_i(ctrl_alu_func1_c downto ctrl_alu_func0_c) = alu_func_copro_c) else '0';
-  cp_ctrl.start <= '1' when (cp_ctrl.cmd = '1') and (cp_ctrl.cmd_ff = '0') else '0';
 
   -- co-processor select / start trigger --
-  cp_start(0) <= '1' when (cp_ctrl.start = '1') and (ctrl_i(ctrl_cp_id_msb_c downto ctrl_cp_id_lsb_c) = "000") else '0';
-  cp_start(1) <= '1' when (cp_ctrl.start = '1') and (ctrl_i(ctrl_cp_id_msb_c downto ctrl_cp_id_lsb_c) = "001") else '0';
-  cp_start(2) <= '1' when (cp_ctrl.start = '1') and (ctrl_i(ctrl_cp_id_msb_c downto ctrl_cp_id_lsb_c) = "010") else '0';
-  cp_start(3) <= '1' when (cp_ctrl.start = '1') and (ctrl_i(ctrl_cp_id_msb_c downto ctrl_cp_id_lsb_c) = "011") else '0';
-  cp_start(4) <= '1' when (cp_ctrl.start = '1') and (ctrl_i(ctrl_cp_id_msb_c downto ctrl_cp_id_lsb_c) = "100") else '0';
-  cp_start(5) <= '1' when (cp_ctrl.start = '1') and (ctrl_i(ctrl_cp_id_msb_c downto ctrl_cp_id_lsb_c) = "101") else '0';
-  cp_start(6) <= '1' when (cp_ctrl.start = '1') and (ctrl_i(ctrl_cp_id_msb_c downto ctrl_cp_id_lsb_c) = "110") else '0';
-  cp_start(7) <= '1' when (cp_ctrl.start = '1') and (ctrl_i(ctrl_cp_id_msb_c downto ctrl_cp_id_lsb_c) = "111") else '0';
+  -- > "cp_start" is high for one cycle to trigger operation of the according co-processor
+  cp_start(5 downto 0) <= ctrl_i(ctrl_cp_trig5_c downto ctrl_cp_trig0_c);
 
   -- co-processor operation done? --
-  idone_o <= or_reduce_f(cp_valid);
+  -- > "cp_valid" signal has to be set (for one cycle) one cycle before output data (cp_result) is valid
+  idone_o <= cp_valid(0) or cp_valid(1) or cp_valid(2) or cp_valid(3) or cp_valid(4) or cp_valid(5);
 
-  -- co-processor result - only the *actually selected* co-processor may output data != 0 --
-  cp_res <= cp_result(0) or cp_result(1) or cp_result(2) or cp_result(3) or cp_result(4) or cp_result(5) or cp_result(6) or cp_result(7);
+  -- co-processor result --
+  -- > "cp_result" data has to be always zero unless co-processor was actually triggered
+  cp_res <= cp_result(0) or cp_result(1) or cp_result(2) or cp_result(3) or cp_result(4) or cp_result(5);
 
 
-  -- Co-Processor 0: Shifter (CPU Core ISA) --------------------------------------------------
+  -- Co-Processor 0: Shifter Unit (CPU Base ISA) --------------------------------------------
   -- -------------------------------------------------------------------------------------------
   neorv32_cpu_cp_shifter_inst: neorv32_cpu_cp_shifter
   generic map (
@@ -242,7 +194,7 @@ begin
   );
 
 
-  -- Co-Processor 1: Integer Multiplication/Division ('M' Extension) ------------------------
+  -- Co-Processor 1: Integer Multiplication/Division Unit ('M' Extension) -------------------
   -- -------------------------------------------------------------------------------------------
   neorv32_cpu_cp_muldiv_inst_true:
   if (CPU_EXTENSION_RISCV_M = true) or (CPU_EXTENSION_RISCV_Zmmul = true) generate
@@ -366,18 +318,6 @@ begin
   -- -------------------------------------------------------------------------------------------
   cp_result(5) <= (others => '0');
   cp_valid(5)  <= '0';
-
-
-  -- Co-Processor 6: Reserved ---------------------------------------------------------------
-  -- -------------------------------------------------------------------------------------------
-  cp_result(6) <= (others => '0');
-  cp_valid(6)  <= '0';
-
-
-  -- Co-Processor 7: Reserved ---------------------------------------------------------------
-  -- -------------------------------------------------------------------------------------------
-  cp_result(7) <= (others => '0');
-  cp_valid(7)  <= '0';
 
 
 end neorv32_cpu_cpu_rtl;

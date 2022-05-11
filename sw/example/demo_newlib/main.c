@@ -1,5 +1,5 @@
 // #################################################################################################
-// # << NEORV32: neorv32_mtime.c - Machine System Timer (MTIME) HW Driver >>                       #
+// # << NEORV32 - Newlib Demo/Test Program >>                                                      #
 // # ********************************************************************************************* #
 // # BSD 3-Clause License                                                                          #
 // #                                                                                               #
@@ -34,123 +34,109 @@
 
 
 /**********************************************************************//**
- * @file neorv32_mtime.c
- * @brief Machine System Timer (MTIME) HW driver source file.
- *
- * @note These functions should only be used if the MTIME unit was synthesized (IO_MTIME_EN = true).
+ * @file demo_newlib/main.c
+ * @author Stephan Nolting
+ * @brief Demo/test program for NEORV32's newlib C standard library support.
  **************************************************************************/
-
-#include "neorv32.h"
-#include "neorv32_mtime.h"
+#include <neorv32.h>
+#include <unistd.h>
+#include <stdlib.h>
 
 
 /**********************************************************************//**
- * Check if MTIME unit was synthesized.
- *
- * @return 0 if MTIME was not synthesized, 1 if MTIME is available.
+ * @name User configuration
  **************************************************************************/
-int neorv32_mtime_available(void) {
+/**@{*/
+/** UART BAUD rate */
+#define BAUD_RATE 19200
+/**@}*/
 
-  if (NEORV32_SYSINFO.SOC & (1 << SYSINFO_SOC_IO_MTIME)) {
+
+/**********************************************************************//**
+ * Main function: Check some of newlib's core functions.
+ *
+ * @note This program requires UART0.
+ *
+ * @return 0 if execution was successful
+ **************************************************************************/
+int main() {
+
+  // setup NEORV32 runtime environment to keep us safe
+  // -> catch all traps and give debug information via UART0
+  neorv32_rte_setup();
+
+  // setup UART0 at default baud rate, no parity bits, no HW flow control
+  neorv32_uart0_setup(BAUD_RATE, PARITY_NONE, FLOW_CONTROL_NONE);
+
+  // check if UART0 is implemented at all
+  if (neorv32_uart0_available() == 0) {
+    neorv32_uart0_printf("Error! UART0 not synthesized!\n");
     return 1;
   }
+
+
+  // say hello
+  neorv32_uart0_printf("<<< Newlib demo/test program >>>\n\n");
+
+
+  // check if newlib is really available
+#ifndef __NEWLIB__
+  neorv32_uart0_printf("ERROR! Seems like the compiler toolchain does not support newlib...\n");
+  return -1;
+#endif
+
+  neorv32_uart0_printf("newlib version %i.%i\n\n", (int32_t)__NEWLIB__, (int32_t)__NEWLIB_MINOR__);
+
+  neorv32_uart0_printf("<rand> test... ");
+  srand(neorv32_cpu_csr_read(CSR_CYCLE)); // set random seed
+  neorv32_uart0_printf("%i, %i, %i, %i ", rand() % 100, rand() % 100, rand() % 100, rand() % 100);
+  neorv32_uart0_printf("ok\n");
+
+
+  char *char_buffer; // pointer for dynamic memory allocation
+
+  neorv32_uart0_printf("<malloc> test... ");
+  char_buffer = (char *) malloc(4 * sizeof(char)); // 4 bytes
+  neorv32_uart0_printf("ok\n");
+
+  // do not test read & write in simulation as there would be no UART RX input
+  if (NEORV32_SYSINFO.SOC & (1<<SYSINFO_SOC_IS_SIM)) {
+    neorv32_uart0_printf("Skipping <read> & <write> tests as this seems to be a simulation.\n");
+  }
   else {
-    return 0;
-  }
-}
+    neorv32_uart0_printf("<read> test (waiting for 4 chars via UART0)... ");
+    read((int)STDIN_FILENO, char_buffer, 4 * sizeof(char)); // get 4 chars from "STDIN" (UART0.RX)
+    neorv32_uart0_printf("ok\n");
 
+    neorv32_uart0_printf("<write> test to 'STDOUT'... (outputting the chars you have send)\n");
+    write((int)STDOUT_FILENO, char_buffer, 4 * sizeof(char)); // send 4 chars to "STDOUT" (UART0.TX)
+    neorv32_uart0_printf("\nok\n");
 
-/**********************************************************************//**
- * Set current system time.
- *
- * @note The MTIME timer increments with the primary processor clock.
- *
- * @param[in] time New system time (uint64_t)
- **************************************************************************/
-void neorv32_mtime_set_time(uint64_t time) {
-
-  union {
-    uint64_t uint64;
-    uint32_t uint32[sizeof(uint64_t)/sizeof(uint32_t)];
-  } cycles;
-
-  cycles.uint64 = time;
-
-  NEORV32_MTIME.TIME_LO = 0;
-  NEORV32_MTIME.TIME_HI = cycles.uint32[1];
-  NEORV32_MTIME.TIME_LO = cycles.uint32[0];
-
-}
-
-
-/**********************************************************************//**
- * Get current system time.
- *
- * @note The MTIME timer increments with the primary processor clock.
- *
- * @return Current system time (uint64_t)
- **************************************************************************/
-uint64_t neorv32_mtime_get_time(void) {
-
-  union {
-    uint64_t uint64;
-    uint32_t uint32[sizeof(uint64_t)/sizeof(uint32_t)];
-  } cycles;
-
-  uint32_t tmp1, tmp2, tmp3;
-  while(1) {
-    tmp1 = NEORV32_MTIME.TIME_HI;
-    tmp2 = NEORV32_MTIME.TIME_LO;
-    tmp3 = NEORV32_MTIME.TIME_HI;
-    if (tmp1 == tmp3) {
-      break;
-    }
+    neorv32_uart0_printf("<write> test to 'STDERR'... (outputting the chars you have send)\n");
+    write((int)STDERR_FILENO, char_buffer, 4 * sizeof(char)); // send 4 chars to "STDERR" (UART0.TX)
+    neorv32_uart0_printf("\nok\n");
   }
 
-  cycles.uint32[0] = tmp2;
-  cycles.uint32[1] = tmp3;
+  neorv32_uart0_printf("<free> test... ");
+  free(char_buffer);
+  neorv32_uart0_printf("ok\n");
 
-  return cycles.uint64;
+
+  // NOTE: exit is highly oversized as it also includes clean-up functions (destructors), which
+  // is not required for bare-metal or RTOS applications... better use the simple 'return' or even better
+  // make sure main never returns. however, let's test that 'exit' works.
+  neorv32_uart0_printf("<exit> test...");
+  exit(0);
+
+  return 0; // should never be reached
 }
 
 
 /**********************************************************************//**
- * Set compare time register (MTIMECMP) for generating interrupts.
- *
- * @note The interrupt is triggered when MTIME >= MTIMECMP.
- * @note Global interrupts and the timer interrupt source have to be enabled .
- *
- * @param[in] timecmp System time for interrupt (uint64_t)
+ * "after-main" handler that is executed after the application's
+ * main function returns (called by crt0.S start-up code)
  **************************************************************************/
-void neorv32_mtime_set_timecmp(uint64_t timecmp) {
+void __neorv32_crt0_after_main(int32_t return_code) {
 
-  union {
-    uint64_t uint64;
-    uint32_t uint32[sizeof(uint64_t)/sizeof(uint32_t)];
-  } cycles;
-
-  cycles.uint64 = timecmp;
-
-  NEORV32_MTIME.TIMECMP_LO = -1; // prevent MTIMECMP from temporarily becoming smaller than the lesser of the old and new values
-  NEORV32_MTIME.TIMECMP_HI = cycles.uint32[1];
-  NEORV32_MTIME.TIMECMP_LO = cycles.uint32[0];
-}
-
-
-/**********************************************************************//**
- * Get compare time register (MTIMECMP).
- *
- * @return Current MTIMECMP value.
- **************************************************************************/
-uint64_t neorv32_mtime_get_timecmp(void) {
-
-  union {
-    uint64_t uint64;
-    uint32_t uint32[sizeof(uint64_t)/sizeof(uint32_t)];
-  } cycles;
-
-  cycles.uint32[0] = NEORV32_MTIME.TIMECMP_LO;
-  cycles.uint32[1] = NEORV32_MTIME.TIMECMP_HI;
-
-  return cycles.uint64;
+  neorv32_uart0_printf("\n<RTE> main function returned with exit code %i </RTE>\n", return_code);
 }

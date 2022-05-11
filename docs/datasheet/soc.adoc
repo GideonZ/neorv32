@@ -148,12 +148,13 @@ value printed in light gray.
 The NEORV32 generics allow to configure the system according to your needs. The generics are
 used to control implementation of certain CPU extensions and peripheral modules and even allow to
 optimize the system for certain design goals like minimal area or maximum performance. +
-**More information can be found in the user guides' section
-https://stnolting.github.io/neorv32/ug/#_application_specific_processor_configuration[Application-Specific Processor Configuration]**.
+ +
+More information can be found in the user guides' section
+https://stnolting.github.io/neorv32/ug/#_application_specific_processor_configuration[Application-Specific Processor Configuration].
 
 [TIP]
-Privileged software can determine the actual CPU and processor configuration via the <<_misa>> and the 
-<<_system_configuration_information_memory_sysinfo, SYSINFO>> registers.
+Privileged software can determine the actual CPU and processor configuration via the <<_misa>> and <<_mxisa>> CSRs (CPU) 
+and the <<_system_configuration_information_memory_sysinfo, SYSINFO>> (processor) memory-mapped registers.
 
 [TIP]
 Run a quick simulation using the provided simulation/GHDL scripts (https://stnolting.github.io/neorv32/ug/#_hello_world)
@@ -240,22 +241,11 @@ See chapter <<_on_chip_debugger_ocd>> for more information.
 :sectnums:
 ==== RISC-V CPU Extensions
 
+.Discovering ISA Extensions
 [TIP]
 See section <<_instruction_sets_and_extensions>> for more information. The configuration of the RISC-V _main_ ISA extensions
-(like `M`) can be determined via the <<_misa>> CSR. The configuration of ISA _sub-extensions_ (like `Zicsr`) and _extension options_
-can be determined via memory-mapped registers of the <<_system_configuration_information_memory_sysinfo>> module.
-
-
-:sectnums!:
-===== _CPU_EXTENSION_RISCV_A_
-
-[cols="4,4,2"]
-[frame="all",grid="none"]
-|======
-| **CPU_EXTENSION_RISCV_A** | _boolean_ | false
-3+| Implement atomic memory access operations when _true_.
-See section <<_a_atomic_memory_access>>.
-|======
+(like `M`) can be determined via the <<_misa>> CSR. The configuration of ISA _sub-extensions_ (like `Zicsr`) and _tuning options_
+can be determined via the NEORV32-specific <<_mxisa>> CSR.
 
 
 :sectnums!:
@@ -356,7 +346,6 @@ See section <<_zicsr_control_and_status_register_access_privileged_architecture>
 |======
 | **CPU_EXTENSION_RISCV_Zicntr** | _boolean_ | true
 3+| Implement the basic CPU <<_machine_counter_and_timer_csrs>> (`time[h]`, `[m]cycle[h]`, `[m]instret[h]`) when true.
-Enabling this extension will set the  _SYSINFO_CPU_ZICNTR_ flag in the `CPU` <<_system_configuration_information_memory_sysinfo, SYSINFO>> register.
 See section <<_zicntr_cpu_base_counters>> for more information.
 |======
 
@@ -369,7 +358,6 @@ See section <<_zicntr_cpu_base_counters>> for more information.
 |======
 | **CPU_EXTENSION_RISCV_Zihpm** | _boolean_ | false
 3+| Implement hardware performance monitor CSRs when true.
-Enabling this extension will set the  _SYSINFO_CPU_ZIHPM_ flag in the `CPU` <<_system_configuration_information_memory_sysinfo, SYSINFO>> register.
 See section <<_zihpm_hardware_performance_monitors>> for more information.
 |======
 
@@ -413,8 +401,9 @@ custom instruction when _true_. See section <<_zxcfu_custom_instructions_extensi
 
 // ####################################################################################################################
 :sectnums:
-==== Extension Options
+==== Tuning Options
 
+These are generics to fine-tune certain ISA extensions and CPU features.
 See section <<_instruction_sets_and_extensions>> for more information.
 
 
@@ -470,7 +459,7 @@ Note: configurations with <<_cpu_cnt_width>> less than 64 bits do not comply to 
 |======
 | **CPU_IPB_ENTRIES** | _natural_ | 2
 3+| This generic configures the number of entries in the CPU's instruction prefetch buffer (a FIFO).
-The value has to be a power of two and has to be greater than zero.
+The value has to be a power of two and has to be greater than or equal to _two_ (>= 2).
 Long linear sequences of code can benefit from an increased IPB size.
 |======
 
@@ -489,9 +478,8 @@ See section <<_pmp_physical_memory_protection>> for more information.
 [frame="all",grid="none"]
 |======
 | **PMP_NUM_REGIONS** | _natural_ | 0
-3+| Total number of implemented protections regions (0..64). If this generics is zero no physical memory
-protection logic will be implemented at all. Setting <<_pmp_num_regions>>_ > 0 will set the _SYSINFO_CPU_PMP_ flag
-in the `CPU` <<_system_configuration_information_memory_sysinfo, SYSINFO>> register.
+3+| Total number of implemented protection regions (0..16). If this generics is zero no physical memory
+protection logic will be implemented at all.
 |======
 
 
@@ -501,8 +489,9 @@ in the `CPU` <<_system_configuration_information_memory_sysinfo, SYSINFO>> regis
 [cols="4,4,2"]
 [frame="all",grid="none"]
 |======
-| **PMP_MIN_GRANULARITY** | _natural_ | 64*1024
-3+| Minimal region granularity in bytes. Has to be a power of two. Has to be at least 8 bytes.
+| **PMP_MIN_GRANULARITY** | _natural_ | 4
+3+| Minimal region granularity in bytes. Has to be a power of two and has to be at least 4 bytes. A larger granularity
+will reduce hardware utilization and impact on critical path but will also reduce the minimal region size.
 |======
 
 
@@ -1101,7 +1090,7 @@ specifications. However, bare-metal system can also repurpose these interrupts. 
 .Trigger type
 [IMPORTANT]
 The fast interrupt request channels become pending after being triggering by **a rising edge**. A pending FIRQ has to
-be explicitly cleared by setting the according <<_mip>> CSR bit.
+be explicitly cleared by writing zero to the according <<_mip>> CSR bit.
 
 
 :sectnums:
@@ -1160,7 +1149,7 @@ the according FIRQ priority; 0 = highest, 15 = lowest):
 .Trigger type
 [IMPORTANT]
 The fast interrupt request channels become pending after being triggering by **a rising edge**. A pending FIRQ has to
-be explicitly cleared by setting the according <<_mip>> CSR bit.
+be explicitly cleared by writing zero to the according <<_mip>> CSR bit.
 
 
 
@@ -1244,43 +1233,6 @@ The base address of the internal bootloader (at _0xFFFF0000_) and the internal I
 peripheral devices are also defined in the package and are fixed. These address regions cannot not be used for other
 applications - even if the bootloader or all IO devices are not implemented - without modifying the core's
 hardware sources.
-
-
-:sectnums:
-==== Physical Memory Attributes
-
-The processor setup defines fixed attributes for the four processor-internal address space regions.
-Accessing a memory region in a way that violates any of these attributes will raise an according
-access exception..
-
-* `r` - read access (from CPU data access interface, "loads")
-* `w` - write access (from CPU data access interface, "stores")
-* `x` - execute access (from CPU instruction fetch interface)
-* `a` - atomic access (from CPU data access interface)
-* `8` - byte (8-bit)-accessible (when writing)
-* `16` - half-word (16-bit)-accessible (when writing)
-* `32` - word (32-bit)-accessible (when writing)
-
-[NOTE]
-Read accesses (loads and instruction fetches) can always access data in
-word, half-word (for instruction fetch only if `C` extension is enabled)
-and byte (not for instruction fetch) quantities (requiring an accordingly aligned address).
-
-[TIP]
-The following table shows the _default hardware-defined_ physical memory attributes of each main address space region.
-Additional user-defined attributes (for example certain read/write/execute rights for specific address space regions) can be
-provided using the RISC-V <<_machine_physical_memory_protection_csrs>>.
-
-[cols="^1,^2,^2,^3,^2"]
-[options="header",grid="rows"]
-|=======================
-| # | Region                | Base address | Size        | Attributes
-| 5 | IO/peripheral devices | 0xfffffe00   | 512 bytes   | `r/w/a/32`
-| 4 | On-chip debugger      | 0xfffff800   | 512 bytes   | `r/w/x/32`
-| 3 | Bootloader ROM        | 0xffff0000   | up to 32kB  | `r/x/a`
-| 2 | DMEM                  | 0x80000000   | up to "2GB" | `r/w/x/a/8/16/32`
-| 1 | IMEM                  | 0x00000000   | up to 2GB   | `r/w/x/a/8/16/32`
-|=======================
 
 
 :sectnums:
@@ -1412,17 +1364,19 @@ Basically, the processor is a SoC consisting of the NEORV32 CPU, peripheral/IO d
 memories, an external memory interface and a bus infrastructure to interconnect all units. Additionally, the
 system implements an internal reset generator and a global clock generator/divider.
 
+
 **Internal Reset Generator**
 
+[IMPORTANT]
 Most processor-internal modules - except for the CPU and the watchdog timer - do not have a dedicated
 reset signal. However, all devices can be reset by software by clearing the corresponding unit's control
 register. The automatically included application start-up code (`crt0.S`) will perform a software-reset of all
 modules to ensure a clean system reset state.
 
-The hardware reset signal of the processor can either be
-triggered via the external reset pin (`rstn_i`, low-active) or by the internal watchdog timer (if implemented).
-Before the external reset signal is applied to the system, it is extended to have a minimal duration of eight
-clock cycles.
+The hardware reset signal of the processor can either be triggered via the external reset pin (`rstn_i`, low-active),
+by the internal watchdog timer (if implemented) or by the on-chip debugger. The external reset signal `rstn_i`
+is extended to be active for at least 4 cycles when triggered.
+
 
 **Internal Clock Divider**
 
@@ -1446,6 +1400,7 @@ from the top entity's `clk_i` signal.
 | Resulting clock: | _f/2_   | _f/4_   | _f/8_   | _f/64_  | _f/128_ | _f/1024_| _f/2048_| _f/4096_
 |=======================
 
+
 **Peripheral / IO Devices**
 
 The processor-internal peripheral/IO devices are located at the end of the 32-bit address space at base
@@ -1453,21 +1408,25 @@ address _0xFFFFFE00_. A region of 512 bytes is reserved for this devices. Hence,
 accessed using a memory-mapped scheme. A special linker script as well as the NEORV32 core software
 library abstract the specific memory layout for the user.
 
+.Address Space Mapping
 [IMPORTANT]
 The base address of each component/module has to be aligned to the
 total size of the module's occupied address space! The occupied address space
 has to be a power of two (minimum 4 bytes)! Address spaces must not overlap!
 
+.Full-Word Write Accesses Only
 [IMPORTANT]
-When accessing an IO device that hast not been implemented (via the according generic), a
-load/store access fault exception is triggered.
-
-[IMPORTANT]
-The peripheral/IO devices can only be written in full-word mode (i.e. 32-bit). Byte or half-word
+All peripheral/IO devices can only be written in full-word mode (i.e. 32-bit). Byte or half-word
 (8/16-bit) writes will trigger a store access fault exception. Read accesses are not size constrained.
 Processor-internal memories as well as modules connected to the external memory interface can still
 be written with a byte-wide granularity.
 
+.Unimplemented Modules
+[NOTE]
+When accessing an IO device that hast not been implemented (via the according generic), a
+load/store access fault exception is triggered.
+
+.Hardware Reset
 [NOTE]
 Most of the IO devices do not have a hardware reset. Instead, the devices are reset via software by
 writing zero to the unit's control register. A general software-based reset of all devices is done by the
@@ -1481,11 +1440,13 @@ register and register bit accesses.
 [TIP]
 A CMSIS-SVD-compatible **System View Description (SVD)** file including all peripherals is available in `sw/svd`.
 
+
 **Interrupts of Processor-Internal Modules**
 
 Most peripheral/IO devices provide some kind of interrupt (for example to signal available incoming data). These
 interrupts are entirely mapped to the CPU's <<_custom_fast_interrupt_request_lines>>. Note that all these
 interrupt lines are high-active and are permanently triggered until the IRQ-causing condition is resolved.
+
 
 **Nomenclature for the Peripheral / IO Devices Listing**
 

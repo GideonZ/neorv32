@@ -36,7 +36,7 @@
 /**********************************************************************//**
  * @file bootloader.c
  * @author Stephan Nolting
- * @brief NEORV32 bootloader.
+ * @brief Default NEORV32 bootloader.
  **************************************************************************/
 
 // Libraries
@@ -358,15 +358,14 @@ int main(void) {
   PRINT_XNUM(neorv32_cpu_csr_read(CSR_MIMPID));
   PRINT_TEXT("\nCLK:  ");
   PRINT_XNUM(NEORV32_SYSINFO.CLK);
-  PRINT_TEXT("\nMISA: ");
+  PRINT_TEXT("\nISA:  ");
   PRINT_XNUM(neorv32_cpu_csr_read(CSR_MISA));
-  PRINT_TEXT("\nCPU:  ");
-  PRINT_XNUM(NEORV32_SYSINFO.CPU);
+  PRINT_TEXT(" + ");
+  PRINT_XNUM(neorv32_cpu_csr_read(CSR_MXISA));
   PRINT_TEXT("\nSOC:  ");
   PRINT_XNUM(NEORV32_SYSINFO.SOC);
   PRINT_TEXT("\nIMEM: ");
-  PRINT_XNUM(NEORV32_SYSINFO.IMEM_SIZE);
-  PRINT_TEXT(" bytes @");
+  PRINT_XNUM(NEORV32_SYSINFO.IMEM_SIZE); PRINT_TEXT(" bytes @");
   PRINT_XNUM(NEORV32_SYSINFO.ISPACE_BASE);
   PRINT_TEXT("\nDMEM: ");
   PRINT_XNUM(NEORV32_SYSINFO.DMEM_SIZE);
@@ -566,7 +565,8 @@ void get_exe(int src) {
     PRINT_TEXT("Loading... ");
 
     // flash checks
-    if (spi_flash_read_1st_id() == 0x00) { // check if flash ready (or available at all)
+    if (((NEORV32_SYSINFO.SOC & (1<<SYSINFO_SOC_IO_SPI)) == 0x00) || // SPI module implemented?
+       (spi_flash_read_1st_id() == 0x00)) { // check if flash ready (or available at all)
       system_error(ERROR_FLASH);
     }
   }

@@ -48,7 +48,6 @@ entity neorv32_ProcessorTop_stdlogic is
     -- On-Chip Debugger (OCD) --
     ON_CHIP_DEBUGGER_EN          : boolean := false;  -- implement on-chip debugger
     -- RISC-V CPU Extensions --
-    CPU_EXTENSION_RISCV_A        : boolean := false;  -- implement atomic extension?
     CPU_EXTENSION_RISCV_B        : boolean := false;  -- implement bit-manipulation extension?
     CPU_EXTENSION_RISCV_C        : boolean := false;  -- implement compressed extension?
     CPU_EXTENSION_RISCV_E        : boolean := false;  -- implement embedded RF extension?
@@ -66,8 +65,8 @@ entity neorv32_ProcessorTop_stdlogic is
     FAST_SHIFT_EN                : boolean := false;  -- use barrel shifter for shift operations
     CPU_CNT_WIDTH                : natural := 64;     -- total width of CPU cycle and instret counters (0..64)
     -- Physical Memory Protection (PMP) --
-    PMP_NUM_REGIONS              : natural := 0;      -- number of regions (0..64)
-    PMP_MIN_GRANULARITY          : natural := 64*1024; -- minimal region granularity in bytes, has to be a power of 2, min 8 bytes
+    PMP_NUM_REGIONS              : natural := 0;      -- number of regions (0..16)
+    PMP_MIN_GRANULARITY          : natural := 4;      -- minimal region granularity in bytes, has to be a power of 2, min 4 bytes
     -- Hardware Performance Monitors (HPM) --
     HPM_NUM_CNTS                 : natural := 0;      -- number of implemented HPM counters (0..29)
     HPM_CNT_WIDTH                : natural := 40;     -- total size of HPM counters (0..64)
@@ -138,7 +137,6 @@ entity neorv32_ProcessorTop_stdlogic is
     wb_sel_o       : out std_logic_vector(03 downto 0); -- byte enable
     wb_stb_o       : out std_logic; -- strobe
     wb_cyc_o       : out std_logic; -- valid cycle
-    wb_lock_o      : out std_logic; -- exclusive access request
     wb_ack_i       : in  std_logic := '0'; -- transfer acknowledge
     wb_err_i       : in  std_logic := '0'; -- transfer error
     -- Advanced memory control signals (available if MEM_EXT_EN = true) --
@@ -221,7 +219,6 @@ architecture neorv32_ProcessorTop_stdlogic_rtl of neorv32_ProcessorTop_stdlogic 
   signal wb_sel_o_int    : std_ulogic_vector(03 downto 0);
   signal wb_stb_o_int    : std_ulogic;
   signal wb_cyc_o_int    : std_ulogic;
-  signal wb_lock_o_int   : std_ulogic;
   signal wb_ack_i_int    : std_ulogic;
   signal wb_err_i_int    : std_ulogic;
   --
@@ -287,11 +284,10 @@ begin
     -- On-Chip Debugger (OCD) --
     ON_CHIP_DEBUGGER_EN          => ON_CHIP_DEBUGGER_EN,          -- implement on-chip debugger
     -- RISC-V CPU Extensions --
-    CPU_EXTENSION_RISCV_A        => CPU_EXTENSION_RISCV_A,        -- implement atomic extension?
     CPU_EXTENSION_RISCV_B        => CPU_EXTENSION_RISCV_B,        -- implement bit-manipulation extension?
     CPU_EXTENSION_RISCV_C        => CPU_EXTENSION_RISCV_C,        -- implement compressed extension?
     CPU_EXTENSION_RISCV_E        => CPU_EXTENSION_RISCV_E,        -- implement embedded RF extension?
-    CPU_EXTENSION_RISCV_M        => CPU_EXTENSION_RISCV_M,        -- implement muld/div extension?
+    CPU_EXTENSION_RISCV_M        => CPU_EXTENSION_RISCV_M,        -- implement mul/div extension?
     CPU_EXTENSION_RISCV_U        => CPU_EXTENSION_RISCV_U,        -- implement user mode extension?
     CPU_EXTENSION_RISCV_Zfinx    => CPU_EXTENSION_RISCV_Zfinx,    -- implement 32-bit floating-point extension (using INT reg!)
     CPU_EXTENSION_RISCV_Zicsr    => CPU_EXTENSION_RISCV_Zicsr,    -- implement CSR system?
@@ -305,8 +301,8 @@ begin
     FAST_SHIFT_EN                => FAST_SHIFT_EN,      -- use barrel shifter for shift operations
     CPU_CNT_WIDTH                => CPU_CNT_WIDTH,      -- total width of CPU cycle and instret counters (0..64)
     -- Physical Memory Protection (PMP) --
-    PMP_NUM_REGIONS              => PMP_NUM_REGIONS,    -- number of regions (0..64)
-    PMP_MIN_GRANULARITY          => PMP_MIN_GRANULARITY, -- minimal region granularity in bytes, has to be a power of 2, min 8 bytes
+    PMP_NUM_REGIONS              => PMP_NUM_REGIONS,    -- number of regions (0..16)
+    PMP_MIN_GRANULARITY          => PMP_MIN_GRANULARITY, -- minimal region granularity in bytes, has to be a power of 2, min 4 bytes
     -- Hardware Performance Monitors (HPM) --
     HPM_NUM_CNTS                 => HPM_NUM_CNTS,       -- number of implemented HPM counters (0..29)
     HPM_CNT_WIDTH                => HPM_CNT_WIDTH,      -- total size of HPM counters (0..64)
@@ -377,7 +373,6 @@ begin
     wb_sel_o       => wb_sel_o_int,    -- byte enable
     wb_stb_o       => wb_stb_o_int,    -- strobe
     wb_cyc_o       => wb_cyc_o_int,    -- valid cycle
-    wb_lock_o      => wb_lock_o_int,   -- exclusive access request
     wb_ack_i       => wb_ack_i_int,    -- transfer acknowledge
     wb_err_i       => wb_err_i_int,    -- transfer error
     -- Advanced memory control signals (available if MEM_EXT_EN = true) --
@@ -453,7 +448,6 @@ begin
   wb_sel_o        <= std_logic_vector(wb_sel_o_int);
   wb_stb_o        <= std_logic(wb_stb_o_int);
   wb_cyc_o        <= std_logic(wb_cyc_o_int);
-  wb_lock_o       <= std_logic(wb_lock_o_int);
   wb_ack_i_int    <= std_ulogic(wb_ack_i);
   wb_err_i_int    <= std_ulogic(wb_err_i);
 
