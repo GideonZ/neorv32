@@ -107,7 +107,8 @@ begin
     i_mem: entity work.mem_bus_32_slave_bfm
     generic map (
         g_name    => "ram",
-        g_latency => 16
+        g_time_to_ack => 0,
+        g_latency => 1
     )
     port map(
         clock     => sys_clock,

@@ -153,7 +153,6 @@ __crt0_reset_io_loop:
 
 
 // ************************************************************************************************
-<<<<<<< HEAD
 // Clear .bss section (word-wise) using linker script symbols
 // ************************************************************************************************
 __crt0_clear_bss:
@@ -187,23 +186,6 @@ __crt0_copy_data_loop:
   j    __crt0_copy_data_loop
 
 __crt0_copy_data_loop_end:
-
-
-// ************************************************************************************************
-// Clear .bss section (byte-wise)
-// ************************************************************************************************
-__crt0_clear_bss:
-  la   x14,  __crt0_bss_start
-  la   x15,  __crt0_bss_end
-
-__crt0_clear_bss_loop:
-  bge  x14,  x15, __crt0_clear_bss_loop_end
-  sb   zero, 0(x14)
-  addi x14,  x14, 1
-  j    __crt0_clear_bss_loop
-
-__crt0_clear_bss_loop_end:
-
 
 // ************************************************************************************************
 // Setup arguments and call main function
