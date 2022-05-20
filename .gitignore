@@ -16,6 +16,11 @@ __pycache__
 # keep default VHDL memory images
 !rtl/core/*_image.vhd
 
+# simulation stuff
+*.asdb
+library.cfg
+work
+
 # host executables
 sw/image_gen/image_gen
 sw/image_gen/image_gen.exe
