@@ -2061,6 +2061,15 @@ begin
             else -- return from "normal trap"
               csr.mstatus_mie  <= csr.mstatus_mpie; -- restore global IRQ enable flag
               csr.mstatus_mpie <= '1';
+---------------------------------------------------------------------------------
+ -- GZW: Added to simplify debugging: If mret occurs without interrupt, the cause is set to all ones.
+ -- Else, the mcause is reset, so the trace will show that no interrupt (or trap) is active.
+              if unsigned(csr.mcause) = 0 then
+                csr.mcause <= (others => '1');
+              else
+                csr.mcause <= (others => '0');
+              end if;
+---------------------------------------------------------------------------------
               if (CPU_EXTENSION_RISCV_U = true) then -- user mode implemented
                 csr.privilege   <= csr.mstatus_mpp; -- restore previous privilege mode
                 csr.mstatus_mpp <= '0'; -- MRET has to clear mstatus.MPP
