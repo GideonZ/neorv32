@@ -45,7 +45,7 @@ _start:
 
 
 // ************************************************************************************************
-// We need to ensure interrupts are globally disabled at start. This is is required if this code
+// We need to ensure interrupts are globally disabled at start. This is required if this code
 // is part of a program uploaded by the on-chip debugger (potentionally taking control from the
 // bootloader). We setup a new stack pointer here and WE DO NOT WANT TO trap to an outdated trap
 // handler with a modified stack pointer.
@@ -76,7 +76,7 @@ __crt0_cpu_csr_init:
   csrw mtvec, x10
   csrw mepc,  x10                       // just to init mepc
 
-  csrw mstatus, zero                    // clear all control flags, also disable global IRQ
+  csrw mstatus, zero                    // clear all control flags, also disable IRQs globally
   csrw mie,     zero                    // absolutely no interrupt sources, thanks
   csrw mip,     zero                    // clear all pending interrupts
 
@@ -141,41 +141,28 @@ __crt0_reg_file_clear:
 // Reset/deactivate IO/peripheral devices
 // Devices, that are not implemented, will cause a store bus access fault
 // that is catched (but not further processed) by the dummy trap handler.
+// This can be disabled by defining 'NO_IO_RESET' before re-compiling.
 // ************************************************************************************************
 __crt0_reset_io:
   la   x8,   __crt0_io_space_begin         // start of processor-internal IO region
   la   x9,   __crt0_io_space_end           // end of processor-internal IO region
 
+// Make this opt-out so that certain modules (like the XIP module) can keep running after being configured by the bootloader
+#ifndef NO_IO_RESET
 __crt0_reset_io_loop:
   sw   zero, 0(x8)
   addi x8,   x8, 4
   bne  x8,   x9, __crt0_reset_io_loop
+#endif
 
 
 // ************************************************************************************************
-// Clear .bss section (word-wise) using linker script symbols
-// ************************************************************************************************
-__crt0_clear_bss:
-  la   x11,  __crt0_bss_start
-  la   x12,  __crt0_bss_end
-
-__crt0_clear_bss_loop:
-  bge  x11,  x12, __crt0_clear_bss_loop_end
-  sw   zero, 0(x11)
-  addi x11,  x11, 4
-  j    __crt0_clear_bss_loop
-
-__crt0_clear_bss_loop_end:
-
-
-// ************************************************************************************************
-// Copy initialized .data section from ROM to RAM (word-wise) using linker script symbols
+// Copy initialized .data section from ROM to RAM (word-wise, section begins and ends on word boundary)
 // ************************************************************************************************
 __crt0_copy_data:
-  la   x11, __crt0_copy_data_src_begin        // start of data area (copy source)
-  la   x12, __crt0_copy_data_dst_begin        // start of data area (copy destination)
-  beq  x11, x12, __crt0_copy_data_loop_end    // Nothing to do, if source and destination address are the same
-  la   x13, __crt0_copy_data_dst_end          // last address of destination data area
+  la   x11, __crt0_copy_data_src_begin // start of data area (copy source)
+  la   x12, __crt0_copy_data_dst_begin // start of data area (copy destination)
+  la   x13, __crt0_copy_data_dst_end   // last address of destination data area
 
 __crt0_copy_data_loop:
   bge  x12, x13,  __crt0_copy_data_loop_end
@@ -186,6 +173,23 @@ __crt0_copy_data_loop:
   j    __crt0_copy_data_loop
 
 __crt0_copy_data_loop_end:
+
+
+// ************************************************************************************************
+// Clear .bss section (word-wise, section begins and ends on word boundary)
+// ************************************************************************************************
+__crt0_clear_bss:
+  la   x14,  __crt0_bss_start
+  la   x15,  __crt0_bss_end
+
+__crt0_clear_bss_loop:
+  bge  x14,  x15, __crt0_clear_bss_loop_end
+  sw   zero, 0(x14)
+  addi x14,  x14, 4
+  j    __crt0_clear_bss_loop
+
+__crt0_clear_bss_loop_end:
+
 
 // ************************************************************************************************
 // Setup arguments and call main function
