@@ -32,9 +32,10 @@ image::neorv32_cpu_block.png[width=600,align=center]
 ** `Zmmul` - integer multiplication hardware
 ** `Zxcfu` - custom instructions extension
 ** `PMP` - physical memory protection
-** `Debug` - <<_cpu_debug_mode>> (part of the on.chip debugger) including hardware <<_trigger_module>>
+** `Sdext` - external debug support
+** `Sdtrig` - trigger module
 * <<_risc_v_compatibility>>: Compatible to the RISC-V user specifications and a subset of the RISC-V privileged architecture specifications - passes the official RISC-V Architecture Tests (v2+)
-* Official RISC-V open-source architecture ID
+* Official https://github.com/riscv/riscv-isa-manual/blob/master/marchid.md[RISC-V open source architecture ID]: decimal **19**; hexadecimal `0x00000013`
 * Supports _all_ of the machine-level <<_traps_exceptions_and_interrupts>> from the RISC-V specifications (including bus access exceptions and all unimplemented/illegal/malformed instructions)
 ** This is a special aspect on _execution safety_ by <<_full_virtualization>>
 ** Standard RISC-V interrupts (_external_, _timer_, _software_) plus 16 custom _fast_ interrupts
@@ -57,9 +58,14 @@ This documentation assumes the reader is familiar with the official RISC-V "User
 :sectnums:
 === RISC-V Compatibility
 
-The NEORV32 CPU passes the tests of the _official RISC-V Architecture Test Framework (v2.x)_. This framework is used to check
-RISC-V implementations for compatibility with the official RISC-V ISA specifications. The NEORV32 port of this test framework
-has been moved to a separate repository: https://github.com/stnolting/neorv32-verif
+.RISCOF
+[NOTE]
+https://github.com/stnolting/neorv32-riscof[image:https://github.com/stnolting/neorv32-riscof/actions/workflows/main.yml/badge.svg[title='github.com/stnolting/neorv32-riscof']] +
+The NEORV32 CPU passes the tests of the **official RISCOF RISC-V Architecture Test Framework**. This framework is used to check
+RISC-V implementations for compatibility to the official RISC-V use/privileged ISA specifications. The NEORV32 port of this
+test framework is available in a separate repository: https://github.com/stnolting/neorv32-riscof
+
+
 
 :sectnums:
 ==== RISC-V Incompatibility Issues and Limitations
@@ -68,8 +74,8 @@ This list shows the currently identified issues regarding full RISC-V-compatibil
 
 .Read-Only "Read-Write" CSRs
 [IMPORTANT]
-The NEORV32 <<_misa>> and <<_mtval>> CSRs are _read-only_ - the RISC-V specs. declares
-these registers to be _read/write_. Any machine-mode write access to them is ignored and will _not_
+The NEORV32 <<_misa>> CSR is _read-only_. Hence, ISA capabilities are fixed at synthesis time and cannot be
+enabled/disabled dynamically at runtime. Any machine-mode write access to this CSR is ignored and will _not_
 cause any exceptions or side-effects to maintain RISC-V compatibility.
 
 .Physical Memory Protection (PMP)
@@ -78,10 +84,10 @@ The RISC-V-compatible NEORV32 <<_machine_physical_memory_protection_csrs>> only 
 (top of region) mode and only up to 16 PMP regions.
 
 .No Hardware Support of Misaligned Memory Accesses
-[WARNING]
-The CPU does not support the resolution of unaligned memory access by the hardware. This is not a
-RISC-V-compatibility issue but an important thing to know. Any kind of unaligned memory access
-will raise an exception to allow a software-based emulation provided by the application.
+[IMPORTANT]
+The CPU does not support resolving unaligned memory access by the hardware (this is not a
+RISC-V-incompatibility issue but an important thing to know!). Any kind of unaligned memory access
+will raise an exception to allow a _software-based_ emulation provided by the application.
 
 
 <<<
@@ -99,10 +105,10 @@ micro-operations. In order to increase performance, the CPU's front-end (instruc
 (instruction execution) are de-couples via a FIFO. Therefore, the front-end can already fetch new instructions while
 the back-end is still processing the previously-fetched instruction.
 
-Basically, the NEORV32 CPU is somewhere between a classical pipelined architecture, where each stage
+Basically, the CPU's micro architecture is somewhere between a classical pipelined architecture, where each stage
 requires exactly one processing cycle (if not stalled) and a classical multi-cycle architecture, which executes
 every single instruction (_including_ fetch) in a series of consecutive micro-operations. The combination of
-these two classical design paradigms allows an increased instruction execution in contrast to a pure multi-cycle
+these two design paradigms allows an increased instruction execution in contrast to a pure multi-cycle
 approach (due to overlapping operation of fetch and execute) at a reduced hardware footprint (due to the
 multi-cycle concept).
 
@@ -110,6 +116,10 @@ As a Von-Neumann machine, the CPU provides independent interfaces for instructio
 these two bus interfaces are merged into a single processor-internal bus via a prioritizing bus switch (data accesses
 have higher priority). Hence, _all_ memory addresses including peripheral devices are mapped to a single unified 32-bit
 address space.
+
+[NOTE]
+The CPU does not perform any out-of-order operations. Hence, it is not vulnerable to security issues
+caused by speculative execution (e.g. Spectre an Meltdown). 
 
 
 :sectnums:
@@ -134,7 +144,7 @@ the register file do never occur in the same clock cycle, so no bypass logic is 
 ==== CPU Arithmetic Logic Unit
 
 The arithmetic/logic unit (ALU) is used for processing data from the register file and also for memory and branch address computations.
-All simple <<_i_base_integer_isa> data processing operations (`add`, `and`, ...) are implemented as combinatorial logic requiring only a single cycle to
+All simple <<_i_base_integer_isa>> data processing operations (`add`, `and`, ...) are implemented as combinatorial logic requiring only a single cycle to
 complete. More sophisticated instructions (shift operations from the base ISA and all further ISA extensions) are processed by so-called
 "ALU co-processors".
 
@@ -169,18 +179,20 @@ The control unit is based on several modules (also called "engines").
 
 **Front-End**
 
-The front-end is responsible for fetching instruction data in chunks of 32-bits. This can be one aligned 32-bit instruction,
-two aligned 16-bit instructions or a mixture if 32-bit instructions are not aligned to 32-bit boundaries. The instruction
-data including control and exception information is stored to a FIFO queue - the instruction prefetch buffer (IPB). The depth
-of this FIFO can be configured by the <<_cpu_ipb_entries>> top generic.
+The front-end is responsible for fetching instruction data in chunks of 32-bits. This can be a single aligned 32-bit instruction,
+two aligned 16-bit instructions or a mixture of those. The instruction data including control and exception information is stored
+to a FIFO queue - the instruction prefetch buffer (IPB). The depth of this FIFO can be configured by the <<_cpu_ipb_entries>> top
+generic.
 
 The FIFO allows the front-end to do "speculative" instruction fetches, as it keeps fetching the next consecutive instruction
 all the time. This also allows to decouple front-end (instruction fetch) and back-end (instruction execution) so both modules
-can operate in parallel to increase performance.
+can operate in parallel to increase performance. However, all potential side effects that are caused by this "speculative"
+instruction fetch are already handled by the CPU front-end ensuring a defined execution stage while preventing security
+side attacks (like Spectre and Meltdown).
 
 .Branch Prediction
 [NOTE]
-The front-end implements a very simple branch prediction (predict = always taken) that stops fetching further instruction while
+The front-end implements a very simple branch prediction (predict = always taken) that **stops** fetching further instruction while
 a branch/jump/call operation is in progress.
 
 
@@ -195,8 +207,9 @@ all instructions and extensions.
 
 **Trap Controller**
 
-The trap controller handles all synchronous exceptions (caused by an instruction; e.g. an illegal instruction word) and asynchronous
-exceptions (= interrupts). A full list of all supported exceptions can be found in section <<_neorv32_trap_listing>>.
+The trap controller handles all exceptions (_synchronous_ events caused by an instruction like an illegal instruction word)
+and interrupts (_asynchronous_ events triggered by hart-external hardware). A detailed overview of all traps can be found
+in section <<_traps_exceptions_and_interrupts>>.
 
 
 **CSR System**
@@ -216,8 +229,7 @@ ISA extension. When the CPU is in sleep mode, all CPU-internal operations are st
 Note that this does _not affect_ the operation of any peripheral/IO modules like interfaces and timers. Furthermore,
 the CPU will continue to buffer/enqueue all incoming interrupt requests.
 
-The CPU will leave sleep mode as soon as any interrupt source becomes _pending_. This requires that interrupts are globally
-enabled by setting `<<_mstatus>>.mie` and that at least one interrupt source is enabled in <<_mie>>.
+The CPU will leave sleep mode as soon as any interrupt source becomes _pending_.
 
 [IMPORTANT]
 If sleep mode is entered without at least one enabled interrupt source the CPU will be _permanently_ halted.
@@ -291,8 +303,6 @@ direction seen from the CPU.
 | `d_bus_err_i`    |     1 | in  | bus transfer terminate from accessed peripheral
 | `d_bus_fence_o`  |     1 | out | indicates an executed `fence` instruction
 | `d_bus_priv_o`   |     1 | out | current _effective_ CPU privilege level (`0` = user, `1` = machine)
-4+^| **System Time (for <<_timeh>> CSR)**
-| `time_i`         |    64 | in  | system time input from <<_machine_system_timer_mtime>>
 4+^| **Interrupts, RISC-V-compatible (<<_traps_exceptions_and_interrupts>>)**
 | `msw_irq_i`      |     1 | in  | RISC-V machine software interrupt
 | `mext_irq_i`     |     1 | in  | RISC-V machine external interrupt
@@ -318,6 +328,10 @@ and are not listed here. However, the CPU provides some _specific_ generics that
 NEORV32 processor setup. These generics are assigned by the processor setup only and are not available for user defined configuration.
 The _specific_ generics are listed below.
 
+
+:sectnums!:
+==== _CPU_BOOT_ADDR_
+
 [cols="4,4,2"]
 [frame="all",grid="none"]
 |======
@@ -327,19 +341,51 @@ generic is configured with the base address of the bootloader ROM (default) or w
 memory (IMEM) if the bootloader is disabled (_INT_BOOTLOADER_EN_ = _false_). See section <<_address_space>> for more information.
 |======
 
-[cols="4,4,2"]
-[frame="all",grid="none"]
-|======
-| **CPU_DEBUG_ADDR** | _std_ulogic_vector(31 downto 0)_ | _no default value_
-3+| This address defines the entry address for the "execution based" on-chip debugger. By default, this generic is configured with the base address
-of the debugger memory. See section <<_on_chip_debugger_ocd>> for more information.
-|======
+
+:sectnums!:
+==== _CPU_DEBUG_PARK_ADDR_
 
 [cols="4,4,2"]
 [frame="all",grid="none"]
 |======
-| **CPU_EXTENSION_RISCV_DEBUG** | _boolean_ | _no default value_
-3+| Implement RISC-V-compatible "debug" CPU operation mode. See section <<_cpu_debug_mode>> for more information.
+| **CPU_DEBUG_PARK_ADDR** | _std_ulogic_vector(31 downto 0)_ | _no default value_
+3+| This address defines the "park loop" entry address for the "execution based" on-chip debugger.
+See section <<_on_chip_debugger_ocd>> for more information.
+|======
+
+
+:sectnums!:
+==== _CPU_DEBUG_EXC_ADDR_
+
+[cols="4,4,2"]
+[frame="all",grid="none"]
+|======
+| **CPU_DEBUG_EXC_ADDR** | _std_ulogic_vector(31 downto 0)_ | _no default value_
+3+| This address defines the "exception" entry address for the "execution based" on-chip debugger.
+See section <<_on_chip_debugger_ocd>> for more information.
+|======
+
+
+:sectnums!:
+==== _CPU_EXTENSION_RISCV_Sdext_
+
+[cols="4,4,2"]
+[frame="all",grid="none"]
+|======
+| **CPU_EXTENSION_RISCV_Sdext** | _boolean_ | _no default value_
+3+| Implement RISC-V-compatible "debug" CPU operation mode required for the on-chip debugger.
+See section <<_cpu_debug_mode>> for more information.
+|======
+
+
+:sectnums!:
+==== _CPU_EXTENSION_RISCV_Sdtrig_
+
+[cols="4,4,2"]
+[frame="all",grid="none"]
+|======
+| **CPU_EXTENSION_RISCV_Sdtrig** | _boolean_ | _no default value_
+3+| Implement RISC-V-compatible trigger module. See section <<_cpu_debug_mode>> for more information.
 |======
 
 
@@ -368,7 +414,6 @@ Executing an instruction from an extension that is not supported yet or that is 
 The `B` ISA extension adds instructions for bit-manipulation operations. This extension is enabled if the
 <<_cpu_extension_riscv_b>> configuration generic is _true_.
 The official RISC-V specifications can be found here: https://github.com/riscv/riscv-bitmanip
-A copy of the spec is also available in `docs/references`.
 
 The NEORV32 `B` ISA extension includes the following sub-extensions (according to the RISC-V
 bit-manipulation spec. v.093) and their corresponding instructions:
@@ -395,12 +440,6 @@ By default, the bit-manipulation unit uses an _iterative_ approach to compute sh
 like `clz` and `rol`. To increase performance (at the cost of additional hardware resources) the 
 <<_fast_shift_en>> generic can be enabled to implement full-parallel logic (like barrel shifters) for all
 shift-related `B` instructions.
-
-[WARNING]
-The `B` extension is frozen and officially ratified. However, there is no
-software support for this extension in the upstream GCC RISC-V port yet. An
-intrinsic library is provided to utilize the provided `B` extension features from C-language
-code (see `sw/example/bitmanip_test`) to circumvent this.
 
 
 ==== **`C`** - Compressed Instructions
@@ -597,8 +636,8 @@ will raise an illegal instruction exception if <<_mstatus>>`.TW` is set.
 
 ==== **`Zicntr`** CPU Base Counters
 
-The `Zicntr` ISA extension adds the basic cycle `[m]cycle[h]`), instruction-retired (`[m]instret[h]`) and time (`time[h]`)
-counters. This extensions is stated as _mandatory_ by the RISC-V spec. However, area-constrained setups may remove support for
+The `Zicntr` ISA extension adds the basic cycle `[m]cycle[h]`) and instruction-retired (`[m]instret[h]`) counters.
+This extensions is stated as _mandatory_ by the RISC-V spec. However, area-constrained setups may remove support for
 these counters. Section <<_machine_counter_and_timer_csrs>> shows a list of all `Zicntr`-related CSRs.
 These are available if the `Zicntr` ISA extensions is enabled via the <<_cpu_extension_riscv_zicntr>> generic.
 
@@ -606,10 +645,9 @@ Additional CSRs:
 
 * <<_cycleh>>, <<_mcycleh>> - cycle counter
 * <<_instreth>>, <<_minstreth>> - instructions-retired counter
-* <<_timeh>> - system _wall-clock_ time (driven by the <<_machine_system_timer_mtime>>)
 
-[NOTE]
-Disabling the `Zicntr` extension does not remove the `time[h]`-driving <<_machine_system_timer_mtime>>.
+[IMPORTANT]
+The `Zicntr` ISA extension does not include the `time[h]` CSRs.
 
 If the `Zicntr` ISA extension is disabled, all accesses to the according counter CSRs will raise an illegal instruction exception.
 
@@ -629,12 +667,8 @@ The actual number of implemented HPM counters is defined by the <<_hpm_num_cnts>
 Additional CSRs:
 
 * <<_mhpmevent>> 3..31 (depending on <<_hpm_num_cnts>>) - event configuration CSRs
-* <<_mhpmcounterh>> 3..31 (depending on <<_hpm_num_cnts>>) - counter CSRs
-
-[IMPORTANT]
-The HPM counter CSRs can only be accessed in machine-mode. Hence, the according <<_mcounteren>> CSR bits
-are always zero and read-only. Any access from less-privileged modes will raise an illegal instruction
-exception.
+* <<_mhpmcounterh>> 3..31 (depending on <<_hpm_num_cnts>>) - machine-level counter CSRs
+* <<_hpmcounterh>> 3..31 (depending on <<_hpm_num_cnts>>) - user-level counter CSRs
 
 [TIP]
 Auto-increment of the HPMs can be deactivated individually via the <<_mcountinhibit>> CSR.
@@ -655,24 +689,24 @@ Any additional flags within the `fence.i` instruction word are ignore by the har
 
 ==== **`Zxcfu`** Custom Instructions Extension (CFU)
 
-The `Zxcfu` presents a NEORV32-specific _custom RISC-V_ ISA extension (`Z` = sub-extension, `x` = platform-specific
+The `Zxcfu` presents a NEORV32-specific extension to the RISC-V ISA (`Z` = sub-extension, `x` = platform-specific
 custom extension, `cfu` = name of the custom extension). When enabled via the <<_cpu_extension_riscv_zxcfu>> configuration
 generic, this ISA extensions adds the <<_custom_functions_unit_cfu>> to the CPU core. The CFU is a module that
 allows to add **custom RISC-V instructions** to the processor core.
 
-The CPU is implemented as ALU co-processor and is integrated right into the CPU's pipeline providing minimal data
-transfer latency as it has direct access to the core's register file. Up to 1024 custom instructions can be
-implemented within the CFU. These instructions are mapped to an OPCODE space that has been explicitly reserved by
-the RISC-V spec for custom extensions.
+The CPU is implemented as additional ALU co-processor and is integrated right into the CPU's pipeline providing minimal
+data transfer latency as it has direct access to the core's register file. The CFU utilizes the RISC-V `custom` opcodes
+that have been explicitly reserved by the RISC-V spec for custom extensions.
 
-Software can utilize the custom instructions by using _intrinsic functions_, which are inline assembly functions that
-behave like "regular" C functions.
-
-[TIP]
-For more information regarding the CFU see section <<_custom_functions_unit_cfu>>.
+Software can utilize the custom instructions by using _intrinsic_, which are basically inline assembly functions that
+behave like regular C functions but that evaluate to a single custom instruction word (not calling overhead at all).
 
 [TIP]
-The CFU / `Zxcfu` ISA extension is intended for application-specific _instructions_.
+For more detailed information regarding the CFU, it's hardware and the according software interface
+see section <<_custom_functions_unit_cfu>>.
+
+[TIP]
+The CFU module / `Zxcfu` ISA extension is intended for user-defined **instructions**.
 If you like to add more complex accelerators or interfaces that can also operate independently of
 the CPU take a look at the memory-mapped <<_custom_functions_subsystem_cfs>>.
 
@@ -710,6 +744,23 @@ A simple PMP example program can be found in `sw/example/demo_pmp`.
 Reducing the minimal PMP region size / granularity via the <<_pmp_min_granularity>> top entity generic
 will reduce hardware utilization and also reduces impact on critical path.
 
+.PMP Rules when in Debug Mode
+[NOTE]
+When in debug-mode all PMP rules are ignored making the debugger have maximum access rights.
+
+
+=== **`Sdext** External Debug Support
+
+This ISA extension enables the RISC-V-compatible "external debug support" by implementing
+the CPU "debug mode", which is required for the on-chip debugger.
+See section <<_on_chip_debugger_ocd>> / <<_cpu_debug_mode>> for more information.
+
+
+=== **`Sdtrig`** Trigger Module
+
+This ISA extension implements the RISC-V-compatible trigger module.
+See section <<_on_chip_debugger_ocd>> / <<_trigger_module>> for more information.
+
 
 <<<
 // ####################################################################################################################
@@ -723,8 +774,8 @@ include::cpu_cfu.adoc[]
 === Instruction Timing
 
 The instruction timing listed in the table below shows the required clock cycles for executing a certain
-instruction. These instruction cycles assume a bus access without additional wait states and a filled
-pipeline.
+instruction. These instruction cycles assume a bus access without additional wait states (memory Latency = 1)
+and a filled pipeline.
 
 Average CPI (cycles per instructions) values for "real applications" like for executing the CoreMark benchmark for different CPU
 configurations are presented in <<_cpu_performance>>.
@@ -734,43 +785,43 @@ configurations are presented in <<_cpu_performance>>.
 [options="header", grid="rows"]
 |=======================
 | Class | ISA | Instruction(s) | Execution cycles
-| ALU            | `I/E` | `addi` `slti` `sltiu` `xori` `ori` `andi` `add` `sub` `slt` `sltu` `xor` `or` `and` `lui` `auipc` | 2
-| ALU            | `C`   | `c.addi4spn` `c.nop` `c.addi` `c.li` `c.addi16sp` `c.lui` `c.andi` `c.sub` `c.xor` `c.or` `c.and` `c.add` `c.mv` | 2
-| ALU            | `I/E` | `slli` `srli` `srai` `sll` `srl` `sra` | 3 + SAfootnote:[Shift amount.]/4 + SA%4; FAST_SHIFTfootnote:[Barrel shift when `FAST_SHIFT_EN` is enabled.]: 4; TINY_SHIFTfootnote:[Serial shift when `TINY_SHIFT_EN` is enabled.]: 2..32
-| ALU            | `C`   | `c.srli` `c.srai` `c.slli` | 3 + SAfootnote:[Shift amount (0..31).]; FAST_SHIFTfootnote:[Barrel shifter when `FAST_SHIFT_EN` is enabled.]:
-| Branches       | `I/E` | `beq` `bne` `blt` `bge` `bltu` `bgeu` | Taken: 5 + (ML-1)footnote:[Memory latency.]; Not taken: 3
-| Branches       | `C`   | `c.beqz` `c.bnez`                     | Taken: 5 + (ML-1); Not taken: 3
-| Jumps / Calls  | `I/E` | `jal` `jalr`                  | 5 + (ML-1)
-| Jumps / Calls  | `C`   | `c.jal` `c.j` `c.jr` `c.jalr` | 5 + (ML-1)
-| Memory access  | `I/E` | `lb` `lh` `lw` `lbu` `lhu` `sb` `sh` `sw` | 5 + (ML-2)
-| Memory access  | `C`   | `c.lw` `c.sw` `c.lwsp` `c.swsp`           | 5 + (ML-2)
-| Memory access  | `A`   | `lr.w` `sc.w`                             | 5 + (ML-2)
-| MulDiv         | `M`   | `mul` `mulh` `mulhsu` `mulhu` | 2+32+2; FAST_MULfootnote:[DSP-based multiplication; enabled via `FAST_MUL_EN`.]: 4
-| MulDiv         | `M`   | `div` `divu` `rem` `remu`     | 2+32+2
-| System         | `Zicsr`     | `csrrw` `csrrs` `csrrc` `csrrwi` `csrrsi` `csrrci` | 3
+| ALU            | `I/E` | `add[i]` `slt[i]` `slt[i]u` `xor[i]` `or[i]` `and[i]` `sub` `lui` `auipc`                            | 2
+| ALU            | `C`   | `c.addi4spn` `c.nop` `c.add[i]` `c.li` `c.addi16sp` `c.lui` `c.and[i]` `c.sub` `c.xor` `c.or` `c.mv` | 2
+| ALU            | `I/E` | `sll[i]` `srl[i]` `sra[i]` | 3 + _shift_amount_; FAST_SHIFT: 4
+| ALU            | `C`   | `c.srli` `c.srai` `c.slli` | 3 + _shift_amount_; FAST_SHIFT: 4
+| Branches       | `I/E` | `beq` `bne` `blt` `bge` `bltu` `bgeu` | Taken: 6; not taken: 3
+| Branches       | `C`   | `c.beqz` `c.bnez`                     | Taken: 6; not taken: 3
+| Jumps / Calls  | `I/E` | `jal[r]`                 | 6
+| Jumps / Calls  | `C`   | `c.jal[r]` `c.j` `c.jr`  | 6
+| Memory access  | `I/E` | `lb` `lh` `lw` `lbu` `lhu` `sb` `sh` `sw` | 4
+| Memory access  | `C`   | `c.lw` `c.sw` `c.lwsp` `c.swsp`           | 4
+| Memory access  | `A`   | `lr.w` `sc.w`                             | 4
+| MulDiv         | `M`   | `mul` `mulh` `mulhsu` `mulhu` | 36; FAST_MUL: 4
+| MulDiv         | `M`   | `div` `divu` `rem` `remu`     | 36
+| System         | `Zicsr`     | `csrrw[i]` `csrrs[i]` `csrrc[i]` | 3
 | System         | `Zicsr`     | `ecall` `ebreak` | 3
 | System         | `Zicsr`+`C` | `c.break`        | 3
 | System         | `Zicsr`     | `wfi`            | 3
 | System         | `Zicsr`     | `mret` `dret`    | 5
-| Fence          | `I/E`       | `fence`   | 4 + ML
-| Fence          | `Zifencei`  | `fence.i` | 4 + ML
+| Fence          | `I/E`       | `fence`   | 5
+| Fence          | `Zifencei`  | `fence.i` | 5
 | Floating-point - artihmetic | `Zfinx` | `fadd.s` | 110
 | Floating-point - artihmetic | `Zfinx` | `fsub.s` | 112
 | Floating-point - artihmetic | `Zfinx` | `fmul.s` | 22
-| Floating-point - compare    | `Zfinx` | `fmin.s` `fmax.s` `feq.s` `flt.s` `fle.s` | 13
+| Floating-point - compare    | `Zfinx` | `fmin.s` `fmax.s` `feq.s` `flt.s` `fle.s`  | 13
 | Floating-point - misc       | `Zfinx` | `fsgnj.s` `fsgnjn.s` `fsgnjx.s` `fclass.s` | 12
 | Floating-point - conversion | `Zfinx` | `fcvt.w.s` `fcvt.wu.s` | 47
 | Floating-point - conversion | `Zfinx` | `fcvt.s.w` `fcvt.s.wu` | 48
 | Bit-manipulation - arithmetic/logic    | `B(Zbb)` | `min[u]` `max[u]` `sext.b` `sext.h` `andn` `orn` `xnor` `zext`(pack) `rev8`(grevi) `orc.b`(gorci) | 4
 | Bit-manipulation - shifts              | `B(Zbb)` | `clz` `ctz` | 4 + 1..32; FAST_SHIFT: 4
-| Bit-manipulation - shifts              | `B(Zbb)` | `cpop` | 4 + 32; FAST_SHIFT: 4
-| Bit-manipulation - shifts              | `B(Zbb)` | `rol` `ror[i]` | 4 + SA; FAST_SHIFT: 4
+| Bit-manipulation - shifts              | `B(Zbb)` | `cpop` | 36; FAST_SHIFT: 4
+| Bit-manipulation - shifts              | `B(Zbb)` | `rol` `ror[i]` | 4 + _shift_amount_; FAST_SHIFT: 4
 | Bit-manipulation - shifted-add         | `B(Zba)` | `sh1add` `sh2add` `sh3add` | 4
 | Bit-manipulation - single-bit          | `B(Zbs)` | `sbset[i]` `sbclr[i]` `sbinv[i]` `sbext[i]` | 4
-| Bit-manipulation - carry-less multiply | `B(Zbc)` | `clmul` `clmulh` `clmulr` | 4 + 32
-| Custom instructions (CFU) | `Zxcfu` | - | min. 4
+| Bit-manipulation - carry-less multiply | `B(Zbc)` | `clmul` `clmulh` `clmulr` | 36
+| Custom instructions (CFU) | `Zxcfu` | - | _custom_ (min. 4)
 | | | | 
-| _Illegal instructions_    | `Zicsr` | - | min. 2
+| _Illegal instructions_    | `Zicsr` | - | 2
 |=======================
 
 [NOTE]
@@ -789,22 +840,33 @@ include::cpu_csr.adoc[]
 :sectnums:
 ==== Traps, Exceptions and Interrupts
 
-In this document the following nomenclature regarding traps is used:
+In this document the following terminology is used (derived from the RISC-V trace specification
+available at https://github.com/riscv-non-isa/riscv-trace-spec):
 
-* _interrupts_ = asynchronous exceptions
-* _exceptions_ = synchronous exceptions
-* _traps_ = exceptions + interrupts (synchronous or asynchronous exceptions)
+* **exception**: an unusual condition occurring at run time associated (i.e. _synchronous_) with an
+instruction in a RISC-V hart
+* **interrupt**: an external _asynchronous_ event that may cause a RISC-V hart to experience an
+unexpected transfer of control
+* **trap**: the transfer of control to a trap handler caused by either an _exception_ or an _interrupt_
 
-Whenever an exception or interrupt is triggered, the CPU transfers control to the address stored in <<_mtvec>>
-CSR. The cause of the according interrupt or exception can be determined via the content of <<_mcause>>
-CSR. The address that reflects the current program counter when a trap was taken is stored to <<_mepc>> CSR.
-Additional information regarding the cause of the trap can be retrieved from <<_mtval>> CSR and the processor's
-<<_internal_bus_monitor_buskeeper>> (for memory access exceptions)
+Whenever an exception or interrupt is triggered, the CPU switches to machine-mode (if not already in machine-mode)
+and transfers control to the address stored in <<_mtvec>> CSR. The cause of the this trap can
+be determined via the <<_mcause>> CSR. A list of all implement `mcause` values and the according description
+can be found below in section <<_neorv32_trap_listing>>. The address that reflects the current program counter when a trap
+was taken is stored to <<_mepc>> CSR. This might be the address of the instruction that actually caused the trap
+or that has not been executed yet as it was interrupted by a trap. Additional information regarding the cause
+of the trap can be retrieved from the <<_mtval>> CSR and the processor's <<_internal_bus_monitor_buskeeper>>
+(for bus access exceptions).
 
-The traps are prioritized. If several _synchronous exceptions_ occur at once only the one with highest priority is triggered
-while all remaining exceptions are ignored. If several _asynchronous exceptions_ (interrupts) trigger at once, the one with highest priority
+The traps are prioritized. If several _exceptions_ occur at once only the one with highest priority is triggered
+while all remaining exceptions are ignored. If several _interrupts_ trigger at once, the one with highest priority
 is serviced first while the remaining ones stay _pending_. After completing the interrupt handler the interrupt with
 the second highest priority will get serviced and so on until no further interrupts are pending.
+
+.Interrupts when in User-Mode
+[IMPORTANT]
+If the core is currently operating in less privileged user-mode, (machine-mode) interrupts are globally enabled
+even if <<_mstatus>>`.mie` is cleared.
 
 .Interrupt Signal Requirements - Standard RISC-V Interrupts
 [IMPORTANT]
@@ -854,51 +916,51 @@ clear the MSB.
 **Table Annotations**
 
 The "Prio." column shows the priority of each trap. The highest priority is 1. The "`mcause`" column shows the
-cause ID of the according trap that is written to <<_mcause>> CSR. The "[RISC-V]" columns show the interrupt/exception code value from the
-official RISC-V privileged architecture spec. The "ID [C]" names are defined by the NEORV32 core library (the runtime environment _RTE_) and can
-be used in plain C code. The "`mepc`" and "`mtval`" columns show the value written to <<_mepc>> and <<_mtval>> CSRs when a trap is triggered:
+cause ID of the according trap that is written to <<_mcause>> CSR.  The "ID [C]" names are defined by the NEORV32
+core library (the runtime environment _RTE_) and can be used in plain C code. The <<_mepc>> and <<_mtval>> columns
+show the values written to the according CSRs when a trap is triggered:
 
-* **IPC** - address of interrupted instruction (instruction has not been executed yet)
-* **PC** - address of instruction that caused the trap
+* **I-PC** - address of interrupted instruction (instruction has not been executed yet)
+* **PC** - address of instruction that caused the trap (instruction has been executed)
 * **ADR** - bad memory access address that caused the trap
 * **0** - zero
 
 .NEORV32 Trap Listing
-[cols="3,6,5,14,11,4,4"]
+[cols="1,4,9,12,2,2"]
 [options="header",grid="rows"]
 |=======================
-| Prio. | `mcause`     | [RISC-V] | ID [C]                   | Cause                                  | `mepc`  | `mtval`
-7+^| **Synchronous Exceptions**
-| 1     | `0x00000000` | 0.0      | _TRAP_CODE_I_MISALIGNED_ | instruction address misaligned         | **PC**  | **ADR**
-| 2     | `0x00000001` | 0.1      | _TRAP_CODE_I_ACCESS_     | instruction access bus fault           | **PC**  | **ADR**
-| 3     | `0x00000002` | 0.2      | _TRAP_CODE_I_ILLEGAL_    | illegal instruction                    | **PC**  | **0**
-| 4     | `0x0000000B` | 0.11     | _TRAP_CODE_MENV_CALL_    | environment call from M-mode (`ecall`) | **PC**  | **0**
-| 5     | `0x00000008` | 0.8      | _TRAP_CODE_UENV_CALL_    | environment call from U-mode (`ecall`) | **PC**  | **0**
-| 6     | `0x00000003` | 0.3      | _TRAP_CODE_BREAKPOINT_   | software breakpoint (`ebreak`)         | **PC**  | **0**
-| 7     | `0x00000006` | 0.6      | _TRAP_CODE_S_MISALIGNED_ | store address misaligned               | **PC**  | **ADR**
-| 8     | `0x00000004` | 0.4      | _TRAP_CODE_L_MISALIGNED_ | load address misaligned                | **PC**  | **ADR**
-| 9     | `0x00000007` | 0.7      | _TRAP_CODE_S_ACCESS_     | store access bus fault                 | **PC**  | **ADR**
-| 10    | `0x00000005` | 0.5      | _TRAP_CODE_L_ACCESS_     | load access bus fault                  | **PC**  | **ADR**
-7+^| **Asynchronous Exceptions (Interrupts)**
-| 11    | `0x80000010` | 1.16     | _TRAP_CODE_FIRQ_0_       | fast interrupt request channel 0       | **IPC** | **0**
-| 12    | `0x80000011` | 1.17     | _TRAP_CODE_FIRQ_1_       | fast interrupt request channel 1       | **IPC** | **0**
-| 13    | `0x80000012` | 1.18     | _TRAP_CODE_FIRQ_2_       | fast interrupt request channel 2       | **IPC** | **0**
-| 14    | `0x80000013` | 1.19     | _TRAP_CODE_FIRQ_3_       | fast interrupt request channel 3       | **IPC** | **0**
-| 15    | `0x80000014` | 1.20     | _TRAP_CODE_FIRQ_4_       | fast interrupt request channel 4       | **IPC** | **0**
-| 16    | `0x80000015` | 1.21     | _TRAP_CODE_FIRQ_5_       | fast interrupt request channel 5       | **IPC** | **0**
-| 17    | `0x80000016` | 1.22     | _TRAP_CODE_FIRQ_6_       | fast interrupt request channel 6       | **IPC** | **0**
-| 18    | `0x80000017` | 1.23     | _TRAP_CODE_FIRQ_7_       | fast interrupt request channel 7       | **IPC** | **0**
-| 19    | `0x80000018` | 1.24     | _TRAP_CODE_FIRQ_8_       | fast interrupt request channel 8       | **IPC** | **0**
-| 20    | `0x80000019` | 1.25     | _TRAP_CODE_FIRQ_9_       | fast interrupt request channel 9       | **IPC** | **0**
-| 21    | `0x8000001a` | 1.26     | _TRAP_CODE_FIRQ_10_      | fast interrupt request channel 10      | **IPC** | **0**
-| 22    | `0x8000001b` | 1.27     | _TRAP_CODE_FIRQ_11_      | fast interrupt request channel 11      | **IPC** | **0**
-| 23    | `0x8000001c` | 1.28     | _TRAP_CODE_FIRQ_12_      | fast interrupt request channel 12      | **IPC** | **0**
-| 24    | `0x8000001d` | 1.29     | _TRAP_CODE_FIRQ_13_      | fast interrupt request channel 13      | **IPC** | **0**
-| 25    | `0x8000001e` | 1.30     | _TRAP_CODE_FIRQ_14_      | fast interrupt request channel 14      | **IPC** | **0**
-| 26    | `0x8000001f` | 1.31     | _TRAP_CODE_FIRQ_15_      | fast interrupt request channel 15      | **IPC** | **0**
-| 27    | `0x8000000B` | 1.11     | _TRAP_CODE_MEI_          | machine external interrupt (MEI)       | **IPC** | **0**
-| 28    | `0x80000003` | 1.3      | _TRAP_CODE_MSI_          | machine software interrupt (MSI)       | **IPC** | **0**
-| 29    | `0x80000007` | 1.7      | _TRAP_CODE_MTI_          | machine timer interrupt (MTI)          | **IPC** | **0**
+| Prio. | `mcause`     | ID [C]                   | Cause                                  | `mepc`   | `mtval`
+6+^| **Exceptions** (synchronous to instruction execution)
+| 1     | `0x00000000` | _TRAP_CODE_I_MISALIGNED_ | instruction address misaligned         | **PC**   | **ADR**
+| 2     | `0x00000001` | _TRAP_CODE_I_ACCESS_     | instruction access bus fault           | **I-PC** | **ADR**
+| 3     | `0x00000002` | _TRAP_CODE_I_ILLEGAL_    | illegal instruction                    | **PC**   | **0**
+| 4     | `0x0000000B` | _TRAP_CODE_MENV_CALL_    | environment call from M-mode (`ecall`) | **PC**   | **0**
+| 5     | `0x00000008` | _TRAP_CODE_UENV_CALL_    | environment call from U-mode (`ecall`) | **PC**   | **0**
+| 6     | `0x00000003` | _TRAP_CODE_BREAKPOINT_   | software breakpoint (`ebreak`)         | **PC**   | **0**
+| 7     | `0x00000006` | _TRAP_CODE_S_MISALIGNED_ | store address misaligned               | **PC**   | **ADR**
+| 8     | `0x00000004` | _TRAP_CODE_L_MISALIGNED_ | load address misaligned                | **PC**   | **ADR**
+| 9     | `0x00000007` | _TRAP_CODE_S_ACCESS_     | store access bus fault                 | **PC**   | **ADR**
+| 10    | `0x00000005` | _TRAP_CODE_L_ACCESS_     | load access bus fault                  | **PC**   | **ADR**
+6+^| **Interrupts** (asynchronous to instruction execution)
+| 11    | `0x80000010` | _TRAP_CODE_FIRQ_0_       | fast interrupt request channel 0       | **I-PC** | **0**
+| 12    | `0x80000011` | _TRAP_CODE_FIRQ_1_       | fast interrupt request channel 1       | **I-PC** | **0**
+| 13    | `0x80000012` | _TRAP_CODE_FIRQ_2_       | fast interrupt request channel 2       | **I-PC** | **0**
+| 14    | `0x80000013` | _TRAP_CODE_FIRQ_3_       | fast interrupt request channel 3       | **I-PC** | **0**
+| 15    | `0x80000014` | _TRAP_CODE_FIRQ_4_       | fast interrupt request channel 4       | **I-PC** | **0**
+| 16    | `0x80000015` | _TRAP_CODE_FIRQ_5_       | fast interrupt request channel 5       | **I-PC** | **0**
+| 17    | `0x80000016` | _TRAP_CODE_FIRQ_6_       | fast interrupt request channel 6       | **I-PC** | **0**
+| 18    | `0x80000017` | _TRAP_CODE_FIRQ_7_       | fast interrupt request channel 7       | **I-PC** | **0**
+| 19    | `0x80000018` | _TRAP_CODE_FIRQ_8_       | fast interrupt request channel 8       | **I-PC** | **0**
+| 20    | `0x80000019` | _TRAP_CODE_FIRQ_9_       | fast interrupt request channel 9       | **I-PC** | **0**
+| 21    | `0x8000001a` | _TRAP_CODE_FIRQ_10_      | fast interrupt request channel 10      | **I-PC** | **0**
+| 22    | `0x8000001b` | _TRAP_CODE_FIRQ_11_      | fast interrupt request channel 11      | **I-PC** | **0**
+| 23    | `0x8000001c` | _TRAP_CODE_FIRQ_12_      | fast interrupt request channel 12      | **I-PC** | **0**
+| 24    | `0x8000001d` | _TRAP_CODE_FIRQ_13_      | fast interrupt request channel 13      | **I-PC** | **0**
+| 25    | `0x8000001e` | _TRAP_CODE_FIRQ_14_      | fast interrupt request channel 14      | **I-PC** | **0**
+| 26    | `0x8000001f` | _TRAP_CODE_FIRQ_15_      | fast interrupt request channel 15      | **I-PC** | **0**
+| 27    | `0x8000000B` | _TRAP_CODE_MEI_          | machine external interrupt (MEI)       | **I-PC** | **0**
+| 28    | `0x80000003` | _TRAP_CODE_MSI_          | machine software interrupt (MSI)       | **I-PC** | **0**
+| 29    | `0x80000007` | _TRAP_CODE_MTI_          | machine timer interrupt (MTI)          | **I-PC** | **0**
 |=======================
 
 
@@ -909,30 +971,28 @@ The following table provides a summarized description of the actual events for t
 [options="header",grid="rows"]
 |=======================
 | Trap ID [C] | Triggered when ...
-| _TRAP_CODE_I_MISALIGNED_ | fetching a 32-bit instruction word that is not 32-bit-aligned (_see note below!_)
-| _TRAP_CODE_I_ACCESS_     | bus timeout or bus error during instruction word fetch
+| _TRAP_CODE_I_MISALIGNED_ | fetching a 32-bit instruction word that is not 32-bit-aligned (see note below)
+| _TRAP_CODE_I_ACCESS_     | bus timeout or bus access error during instruction word fetch
 | _TRAP_CODE_I_ILLEGAL_    | trying to execute an invalid instruction word (malformed or not supported) or on a privilege violation
 | _TRAP_CODE_MENV_CALL_    | executing `ecall` instruction in machine-mode
 | _TRAP_CODE_UENV_CALL_    | executing `ecall` instruction in user-mode
-| _TRAP_CODE_BREAKPOINT_   | executing `ebreak` instruction
-| _TRAP_CODE_S_MISALIGNED_ | storing data to an address that is not naturally aligned to the data size (byte, half, word) being stored
-| _TRAP_CODE_L_MISALIGNED_ | loading data from an address that is not naturally aligned to the data size  (byte, half, word) being loaded
-| _TRAP_CODE_S_ACCESS_     | bus timeout or bus error during load data operation
-| _TRAP_CODE_L_ACCESS_     | bus timeout or bus error during store data operation
+| _TRAP_CODE_BREAKPOINT_   | executing `ebreak` instruction or if <<_trigger_module>> fires
+| _TRAP_CODE_S_MISALIGNED_ | storing data to an address that is not naturally aligned to the data size (byte, half, word)
+| _TRAP_CODE_L_MISALIGNED_ | loading data from an address that is not naturally aligned to the data size  (byte, half, word)
+| _TRAP_CODE_S_ACCESS_     | bus timeout or bus access error during load data operation
+| _TRAP_CODE_L_ACCESS_     | bus timeout or bus access error during store data operation
 | _TRAP_CODE_FIRQ_0_ ... _TRAP_CODE_FIRQ_15_| caused by interrupt-condition of processor-internal modules, see <<_neorv32_specific_fast_interrupt_requests>>
-| _TRAP_CODE_MEI_          | user-defined processor-external source (via dedicated top-entity signal)
-| _TRAP_CODE_MSI_          | user-defined processor-external source (via dedicated top-entity signal)
-| _TRAP_CODE_MTI_          | processor-internal machine timer overflow OR user-defined processor-external source (via dedicated top-entity signal)
+| _TRAP_CODE_MEI_          | machine external interrupt (via dedicated top-entity signal)
+| _TRAP_CODE_MSI_          | machine software interrupt (via dedicated top-entity signal)
+| _TRAP_CODE_MTI_          | machine timer interrupt (internal machine timer or via dedicated top-entity signal)
 |=======================
 
-.Misaligned Instruction Address Exception
-[NOTE]
-For 32-bit-only instructions (= no `C` extension) the misaligned instruction exception
-is raised if bit 1 of the fetch address is set (i.e. not on a 32-bit boundary). If the `C` extension is implemented
-there will never be a misaligned instruction exception _at all_.
-In both cases bit 0 of the program counter (and all related CSRs) is hardwired to zero.
+.Resumable Exceptions
+[WARNING]
+Note that not all exceptions are resumable. For example, the "instruction access fault" exception or the "instruction address misaligned"
+exception are not resumable in most cases. These exception might indicate a fatal memory hardware failure.
 
-.Trigger Type
+.Interrupt Trigger Type
 [IMPORTANT]
 The RISC-V standard interrupts (MEI, MSI and MTI) are **level-triggered and high-active**. Once set the signal has to stay high until
 the interrupt request is explicitly acknowledged (e.g. writing to a memory-mapped register). The RISC-V standard interrupts
@@ -940,6 +1000,13 @@ can **NOT** be acknowledged by writing zero to the according <<_mip>> CSR bit. +
 +
 In contrast, the NEORV32 fast interrupt request channels become pending after being triggering by **a rising edge**. A pending FIRQ has to
 be explicitly cleared by writing zero to the according <<_mip>> CSR bit.
+
+.Misaligned Instruction Address Exception
+[NOTE]
+For 32-bit-only instructions (= no `C` extension) the misaligned instruction exception
+is raised if bit 1 of the fetch address is set (i.e. not on a 32-bit boundary). If the `C` extension is implemented
+there will never be a misaligned instruction exception _at all_.
+In both cases bit 0 of the program counter (and all related CSRs) is hardwired to zero.
 
 
 
@@ -1074,25 +1141,3 @@ bit) and word (= 32-bit) boundaries, but not all processor module support sub-wo
 Whenever the CPU executes a `fence` instruction, the according interface signal is set high for one cycle
 (`d_bus_fence_o` for a `fence` instruction; `i_bus_fence_o` for a `fence.i` instruction). It is the task of the
 memory system to perform the necessary operations (for example a cache flush/reload).
-
-
-
-<<<
-// ####################################################################################################################
-:sectnums:
-==== CPU Hardware Reset
-
-In order to reduce routing constraints (and by this the actual hardware requirements), most _uncritical registers_
-of the NEORV32 CPU as well as most registers of the whole NEORV32 Processor do not use **a dedicated hardware reset**.
-"Uncritical registers" in this context means that the initial value of the according register(s)
-after power-up/reset is not relevant for a defined CPU boot/start process.
-
-Many CPU-internal register do provide an asynchronous reset described in the VHDL code, but the "don't care" value
-(VHDL `'-'`) is used for initialization of uncritical registers - effectively generating a flip-flop without a
-reset input.
-
-In terms of the NEORV32 CPU, there are several pipeline registers, state machine registers and even some status
-and control registers (CSRs) that do not require a defined initial state to ensure a correct boot process. The
-pipeline register will get initialized by the CPU's internal state machines, which are initialized from the main
-control engine that actually features a defined hardware reset.
-

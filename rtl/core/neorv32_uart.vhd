@@ -74,7 +74,7 @@ entity neorv32_uart is
   port (
     -- host access --
     clk_i       : in  std_ulogic; -- global clock line
-    rstn_i      : in  std_ulogic; -- global reset line, low-active
+    rstn_i      : in  std_ulogic; -- global reset line, low-active, async
     addr_i      : in  std_ulogic_vector(31 downto 0); -- address
     rden_i      : in  std_ulogic; -- read enable
     wren_i      : in  std_ulogic; -- write enable
@@ -99,10 +99,10 @@ end neorv32_uart;
 architecture neorv32_uart_rtl of neorv32_uart is
 
   -- interface configuration for UART0 / UART1 --
-  constant uart_id_base_c      : std_ulogic_vector(data_width_c-1 downto 0) := cond_sel_stdulogicvector_f(UART_PRIMARY, uart0_base_c,      uart1_base_c);
-  constant uart_id_size_c      : natural                                    := cond_sel_natural_f(        UART_PRIMARY, uart0_size_c,      uart1_size_c);
-  constant uart_id_ctrl_addr_c : std_ulogic_vector(data_width_c-1 downto 0) := cond_sel_stdulogicvector_f(UART_PRIMARY, uart0_ctrl_addr_c, uart1_ctrl_addr_c);
-  constant uart_id_rtx_addr_c  : std_ulogic_vector(data_width_c-1 downto 0) := cond_sel_stdulogicvector_f(UART_PRIMARY, uart0_rtx_addr_c,  uart1_rtx_addr_c);
+  constant uart_id_base_c      : std_ulogic_vector(31 downto 0) := cond_sel_stdulogicvector_f(UART_PRIMARY, uart0_base_c,      uart1_base_c);
+  constant uart_id_size_c      : natural                        := cond_sel_natural_f(        UART_PRIMARY, uart0_size_c,      uart1_size_c);
+  constant uart_id_ctrl_addr_c : std_ulogic_vector(31 downto 0) := cond_sel_stdulogicvector_f(UART_PRIMARY, uart0_ctrl_addr_c, uart1_ctrl_addr_c);
+  constant uart_id_rtx_addr_c  : std_ulogic_vector(31 downto 0) := cond_sel_stdulogicvector_f(UART_PRIMARY, uart0_rtx_addr_c,  uart1_rtx_addr_c);
 
   -- IO space: module base address --
   constant hi_abb_c : natural := index_size_f(io_size_c)-1; -- high address boundary bit
@@ -255,19 +255,13 @@ begin
   rden   <= acc_en and rden_i;
 
 
-  -- Read/Write Access ----------------------------------------------------------------------
+  -- Write Access ---------------------------------------------------------------------------
   -- -------------------------------------------------------------------------------------------
-  rw_access: process(rstn_i, clk_i)
+  write_access: process(rstn_i, clk_i)
   begin
     if (rstn_i = '0') then
       ctrl   <= (others => '0');
-      ack_o  <= '-';
-      data_o <= (others => '0');
     elsif rising_edge(clk_i) then
-      -- bus access acknowledge --
-      ack_o <= wren or rden;
-
-      -- write access --
       if (wren = '1') then
         if (addr = uart_id_ctrl_addr_c) then
           ctrl <= (others => '0');
@@ -282,8 +276,27 @@ begin
           ctrl(ctrl_en_c)                          <= data_i(ctrl_en_c);
         end if;
       end if;
+    end if;
+  end process write_access;
 
-      -- read access --
+  -- number of bits to be sampled --
+  -- if parity flag is ENABLED:  11 bit -> "1011" (1 start bit + 8 data bits + 1 parity bit + 1 stop bit)
+  -- if parity flag is DISABLED: 10 bit -> "1010" (1 start bit + 8 data bits + 1 stop bit)
+  num_bits <= "1011" when (ctrl(ctrl_pmode1_c) = '1') else "1010";
+
+  -- clock enable --
+  clkgen_en_o <= ctrl(ctrl_en_c);
+
+  -- uart clock select --
+  uart_clk <= clkgen_i(to_integer(unsigned(ctrl(ctrl_prsc2_c downto ctrl_prsc0_c))));
+
+
+  -- Read Access ----------------------------------------------------------------------------
+  -- -------------------------------------------------------------------------------------------
+  read_access: process(clk_i)
+  begin
+    if rising_edge(clk_i) then
+      ack_o  <= wren or rden; -- bus access acknowledge
       data_o <= (others => '0');
       if (rden = '1') then
         if (addr = uart_id_ctrl_addr_c) then
@@ -313,21 +326,7 @@ begin
         end if;
       end if;
     end if;
-  end process rw_access;
-
-  -- number of bits to be sampled --
-  -- if parity flag is ENABLED:  11 bit -> "1011" (1 start bit + 8 data bits + 1 parity bit + 1 stop bit)
-  -- if parity flag is DISABLED: 10 bit -> "1010" (1 start bit + 8 data bits + 1 stop bit)
-  num_bits <= "1011" when (ctrl(ctrl_pmode1_c) = '1') else "1010";
-
-
-  -- Clock Selection ------------------------------------------------------------------------
-  -- -------------------------------------------------------------------------------------------
-  -- clock enable --
-  clkgen_en_o <= ctrl(ctrl_en_c);
-
-  -- uart clock select --
-  uart_clk <= clkgen_i(to_integer(unsigned(ctrl(ctrl_prsc2_c downto ctrl_prsc0_c))));
+  end process read_access;
 
 
   -- TX FIFO --------------------------------------------------------------------------------
@@ -343,7 +342,7 @@ begin
   port map (
     -- control --
     clk_i   => clk_i,           -- clock, rising edge
-    rstn_i  => '1',             -- async reset, low-active
+    rstn_i  => rstn_i,          -- async reset, low-active
     clear_i => tx_buffer.clear, -- sync reset, high-active
     half_o  => tx_buffer.half,  -- FIFO at least half-full
     -- write port --
@@ -502,8 +501,8 @@ begin
     end if;
   end process uart_rx_engine;
 
-  -- RX engine ready for a new char? --
-  rx_engine.rtr <= '1' when (rx_engine.state = S_RX_IDLE) and (ctrl(ctrl_en_c) = '1') else '0';
+  -- Enough space (incl. safety margin) in RX buffer for a new char (FIFO less than half-full)? --
+  rx_engine.rtr <= '1' when (rx_buffer.half = '0') and (ctrl(ctrl_en_c) = '1') else '0';
 
 
   -- RX FIFO --------------------------------------------------------------------------------
@@ -519,7 +518,7 @@ begin
   port map (
     -- control --
     clk_i   => clk_i,           -- clock, rising edge
-    rstn_i  => '1',             -- async reset, low-active
+    rstn_i  => rstn_i,          -- async reset, low-active
     clear_i => rx_buffer.clear, -- sync reset, high-active
     half_o  => rx_buffer.half,  -- FIFO at least half-full
     -- write port --

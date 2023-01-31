@@ -1,9 +1,9 @@
 // #################################################################################################
-// # << NEORV32 - Blinking LED Demo Program >>                                                     #
+// # << NEORV32 - RISC-V Trigger Module Example >>                                                 #
 // # ********************************************************************************************* #
 // # BSD 3-Clause License                                                                          #
 // #                                                                                               #
-// # Copyright (c) 2022, Stephan Nolting. All rights reserved.                                     #
+// # Copyright (c) 2023, Stephan Nolting. All rights reserved.                                     #
 // #                                                                                               #
 // # Redistribution and use in source and binary forms, with or without modification, are          #
 // # permitted provided that the following conditions are met:                                     #
@@ -32,36 +32,79 @@
 // # The NEORV32 Processor - https://github.com/stnolting/neorv32              (c) Stephan Nolting #
 // #################################################################################################
 
-
 /**********************************************************************//**
- * @file blink_led/main.c
+ * @file demo_trigger_module/main.c
  * @author Stephan Nolting
- * @brief Simple blinking LED demo program using the lowest 8 bits of the GPIO.output port.
+ * @brief Using the RISC-V trigger module from machine-mode.
  **************************************************************************/
 #include <neorv32.h>
+#include <string.h>
 
 
 /**********************************************************************//**
- * Main function; shows an incrementing 8-bit counter on GPIO.output(7:0).
+ * @name User configuration
+ **************************************************************************/
+/**@{*/
+/** UART BAUD rate */
+#define BAUD_RATE 19200
+/**@}*/
+
+// Prototypes
+void dummy_function(void);
+
+
+/**********************************************************************//**
+ * Example program to show how to cause an exception when reaching a specific
+ * instruction address using the RISC-V trigger module.
  *
- * @note This program requires the GPIO controller to be synthesized.
+ * @note This program requires the 'Sdtrig' ISA extension.
  *
- * @return Will never return.
+ * @return 0 if execution was successful
  **************************************************************************/
 int main() {
 
-  // This is a *minimal* example program.
+  neorv32_rte_setup();
 
-  // clear GPIO output (set all bits to 0)
-  neorv32_gpio_port_set(0);
+  // setup UART at default baud rate, no parity bits, no HW flow control
+  neorv32_uart0_setup(BAUD_RATE, PARITY_NONE, FLOW_CONTROL_NONE);
 
-  int cnt = 0;
+  // intro
+  neorv32_uart0_printf("\n<< RISC-V Trigger Module Example >>\n\n");
 
-  while (1) {
-    neorv32_gpio_port_set(cnt++ & 0xFF); // increment counter and mask for lowest 8 bit
-    neorv32_cpu_delay_ms(256); // wait 256ms using busy wait
+  // check if trigger module unit is implemented at all
+  if ((neorv32_cpu_csr_read(CSR_MXISA) & (1<<CSR_MXISA_SDTRIG)) == 0) {
+    neorv32_uart0_printf("Trigger module ('Sdtrig' ISA extension) not implemented!");
+    return -1;
   }
 
-  // this should never be reached
+  // info
+  neorv32_uart0_printf("This program show how to use the trigger module to raise an EBREAK exception\n"
+                       "when the instruction at a specific address gets executed.\n\n");
+
+  // configure trigger module
+  uint32_t trig_addr = (uint32_t)(&dummy_function);
+  neorv32_cpu_csr_write(CSR_TDATA2, trig_addr); // trigger address
+  neorv32_uart0_printf("Trigger address set to 0x%x.\n", trig_addr);
+
+  neorv32_cpu_csr_write(CSR_TDATA1, (1 <<  2) | // exe = 1: enable trigger module operation
+                                    (0 << 12) | // action = 0: raise ebereak exception but do not enter debug-mode
+                                    (0 << 27)); // dnode = 0: no exclusive access to trigger module from debug-mode
+
+  neorv32_uart0_printf("Calling dummy function... (this will cause the EBREAK exception)\n");
+  // call function - this will cause the trigger module to fire, which will result in an EBREAK
+  // exception that is captured by the RTE's debug handler
+  dummy_function();
+
+  neorv32_uart0_printf("\nProgram completed.\n");
   return 0;
+}
+
+
+/**********************************************************************//**
+ * Just a simple dummy function that will fire the trigger module.
+ * @note Make sure this is not inlined.
+ **************************************************************************/
+void __attribute__ ((noinline)) dummy_function(void) {
+
+  neorv32_uart0_printf("Hello from the dummy function!\n");
 }

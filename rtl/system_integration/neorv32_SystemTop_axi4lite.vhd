@@ -6,7 +6,7 @@
 -- # ********************************************************************************************* #
 -- # BSD 3-Clause License                                                                          #
 -- #                                                                                               #
--- # Copyright (c) 2022, Stephan Nolting. All rights reserved.                                     #
+-- # Copyright (c) 2023, Stephan Nolting. All rights reserved.                                     #
 -- #                                                                                               #
 -- # Redistribution and use in source and binary forms, with or without modification, are          #
 -- # permitted provided that the following conditions are met:                                     #
@@ -309,6 +309,7 @@ begin
     -- Extension Options --
     FAST_MUL_EN                  => FAST_MUL_EN,        -- use DSPs for M extension's multiplier
     FAST_SHIFT_EN                => FAST_SHIFT_EN,      -- use barrel shifter for shift operations
+    CPU_IPB_ENTRIES              => 2,                  -- entries is instruction prefetch buffer, has to be a power of 2, min 1
     -- Physical Memory Protection (PMP) --
     PMP_NUM_REGIONS              => PMP_NUM_REGIONS,    -- number of regions (0..16)
     PMP_MIN_GRANULARITY          => PMP_MIN_GRANULARITY, -- minimal region granularity in bytes, has to be a power of 2, min 4 bytes
@@ -422,9 +423,6 @@ begin
     cfs_out_o   => cfs_out_o_int,   -- custom outputs
     -- NeoPixel-compatible smart LED interface (available if IO_NEOLED_EN = true) --
     neoled_o    => neoled_o_int,    -- async serial data line
-    -- System time --
-    mtime_i     => (others => '0'), -- current system time from ext. MTIME (if IO_MTIME_EN = false)
-    mtime_o     => open,            -- current system time from int. MTIME (if IO_MTIME_EN = true)
     -- External platform interrupts (available if XIRQ_NUM_CH > 0) --
     xirq_i      => xirq_i_int,      -- IRQ channels
     -- CPU Interrupts --

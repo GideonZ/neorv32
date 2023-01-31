@@ -3,7 +3,7 @@
 // # ********************************************************************************************* #
 // # BSD 3-Clause License                                                                          #
 // #                                                                                               #
-// # Copyright (c) 2022, Stephan Nolting. All rights reserved.                                     #
+// # Copyright (c) 2023, Stephan Nolting. All rights reserved.                                     #
 // #                                                                                               #
 // # Redistribution and use in source and binary forms, with or without modification, are          #
 // # permitted provided that the following conditions are met:                                     #
@@ -104,17 +104,17 @@ int main()
   }
 
   // enable IRQ system
-  neorv32_rte_exception_install(SPI_RTE_ID, spi_irq_handler); // SPI to RTE
-  neorv32_cpu_irq_enable(SPI_FIRQ_ENABLE);    // FIRQ6: SPI Interrupt
-  neorv32_cpu_eint();                         // enable global interrupts
+  neorv32_rte_handler_install(SPI_RTE_ID, spi_irq_handler); // SPI to RTE
+  neorv32_cpu_csr_set(CSR_MIE, 1 << SPI_FIRQ_ENABLE); // enable SPI FIRQ
+  neorv32_cpu_csr_set(CSR_MSTATUS, 1 << CSR_MSTATUS_MIE); // enable machine-mode interrupts
 
   // SPI
     // SPI Control
   neorv32_spi_init(&g_neorv32_spi);
     // Configure
   neorv32_spi_disable();
-    // neorv32_spi_setup(int prsc, int clk_phase, int clk_polarity, int data_size, int irq_config)
-  neorv32_spi_setup(0, 0, 0, 0, 3);  // spi mode 0, 8bit, IRQ: 0-: PHY going idle, 10: TX fifo less than half full, 11: TX fifo empty
+    // neorv32_spi_setup(int prsc, int cdiv, int clk_phase, int clk_polarity, int data_size, int irq_config)
+  neorv32_spi_setup(0, 0, 0, 0, 0, 3);  // spi mode 0, 8bit, IRQ: 0-: PHY going idle, 10: TX fifo less than half full, 11: TX fifo empty
   neorv32_spi_enable();
 
   // IRQ based data transfer

@@ -16,7 +16,7 @@
 -- # ********************************************************************************************* #
 -- # BSD 3-Clause License                                                                          #
 -- #                                                                                               #
--- # Copyright (c) 2022, Stephan Nolting. All rights reserved.                                     #
+-- # Copyright (c) 2023, Stephan Nolting. All rights reserved.                                     #
 -- #                                                                                               #
 -- # Redistribution and use in source and binary forms, with or without modification, are          #
 -- # permitted provided that the following conditions are met:                                     #
@@ -147,16 +147,17 @@ begin
   -- Configuration Info ---------------------------------------------------------------------
   -- -------------------------------------------------------------------------------------------
   assert false report
-  "NEORV32 PROCESSOR CONFIG NOTE: Ext. Bus Interface - " &
-  cond_sel_string_f(PIPE_MODE, "PIPELINED", "CLASSIC/STANDARD") & " Wishbone protocol, " &
-  cond_sel_string_f(boolean(BUS_TIMEOUT /= 0), "auto-timeout (" & integer'image(BUS_TIMEOUT) & " cycles), ", "NO auto-timeout, ") &
-  cond_sel_string_f(BIG_ENDIAN, "BIG", "LITTLE") & "-endian byte order, " &
-  cond_sel_string_f(ASYNC_RX, "ASYNC ", "buffered ") & "RX path, " &
-  cond_sel_string_f(ASYNC_TX, "ASYNC ", "buffered ") & "TX path"
-  severity note;
+    "NEORV32 PROCESSOR CONFIG NOTE: Ext. Bus Interface - " &
+    cond_sel_string_f(PIPE_MODE, "PIPELINED", "CLASSIC/STANDARD") & " Wishbone protocol, " &
+    cond_sel_string_f(boolean(BUS_TIMEOUT /= 0), "auto-timeout (" & integer'image(BUS_TIMEOUT) & " cycles), ", "NO auto-timeout, ") &
+    cond_sel_string_f(BIG_ENDIAN, "BIG", "LITTLE") & "-endian byte order, " &
+    cond_sel_string_f(ASYNC_RX, "ASYNC ", "registered ") & "RX, " &
+    cond_sel_string_f(ASYNC_TX, "ASYNC ", "registered ") & "TX"
+    severity note;
 
   -- no timeout warning --
-  assert not (BUS_TIMEOUT  = 0) report "NEORV32 PROCESSOR CONFIG WARNING! Ext. Bus Interface - NO auto-timeout (can cause permanent CPU stall!)." severity warning;
+  assert not (BUS_TIMEOUT  = 0)
+    report "NEORV32 PROCESSOR CONFIG WARNING! Ext. Bus Interface - NO auto-timeout (can cause permanent CPU stall!)." severity warning;
 
 
   -- Access Control -------------------------------------------------------------------------
@@ -182,11 +183,11 @@ begin
       ctrl.we       <= '0';
       ctrl.adr      <= (others => '0');
       ctrl.wdat     <= (others => '0');
-      ctrl.rdat     <= (others => '-');
+      ctrl.rdat     <= (others => '0');
       ctrl.sel      <= (others => '0');
-      ctrl.timeout  <= (others => '-');
-      ctrl.ack      <= '-';
-      ctrl.err      <= '-';
+      ctrl.timeout  <= (others => '0');
+      ctrl.ack      <= '0';
+      ctrl.err      <= '0';
       ctrl.tmo      <= '0';
       ctrl.src      <= '0';
       ctrl.priv     <= '0';

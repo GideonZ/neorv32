@@ -103,6 +103,7 @@ footnote:[This driver file only represents a stub, since the real CFS drivers ar
 | `neorv32_xip.c`     | `neorv32_xip.h`        | HW driver functions for the **XIP**
 | `neorv32_xirq.c`    | `neorv32_xirq.h`       | HW driver functions for the **XIRQ**
 | `syscalls.c`        | -                      | newlib "system calls"
+| -                   | `legacy.h`             | backwards compatibility wrappers and functions (do not use for new designs)
 |=======================
 
 .Core Library Documentation
@@ -137,7 +138,7 @@ The makefile is invoked by simply executing `make` in the console. For example:
 
 [source,bash]
 ----
-neorv32/sw/example/blink_led$ make
+neorv32/sw/example/demo_blink_led$ make
 ----
 
 :sectnums:
@@ -151,24 +152,25 @@ $ make
 <<< NEORV32 SW Application Makefile >>>
 Make sure to add the bin folder of RISC-V GCC to your PATH variable.
 
-== Targets ==
- help         - show this text
- check        - check toolchain
- info         - show makefile/toolchain configuration
- exe          - compile and generate <neorv32_exe.bin> executable for upload via default bootloader (binary file, with header)
- bin          - compile and generate <neorv32_raw_exe.bin> RAW executable file (binary file, no header)
- hex          - compile and generate <neorv32_raw_exe.hex> RAW executable file (hex char file, no header)
- image        - compile and generate VHDL IMEM boot image (for application, no header) in local folder
- install      - compile, generate and install VHDL IMEM boot image (for application, no header)
- sim          - in-console simulation using default/simple testbench and GHDL
- all          - exe + install + hex + bin
- elf_info     - show ELF layout info
- clean        - clean up project home folder
- clean_all    - clean up whole project, core libraries and image generator
- bl_image     - compile and generate VHDL BOOTROM boot image (for bootloader only, no header) in local folder
- bootloader   - compile, generate and install VHDL BOOTROM boot image (for bootloader only, no header)
+=== Targets ===
+ help       - show this text
+ check      - check toolchain
+ info       - show makefile/toolchain configuration
+ asm        - compile and generate <main.asm> assembly listing file for manual debugging
+ elf        - compile and generate <main.elf> ELF file
+ bin        - compile and generate <neorv32_raw_exe.bin> RAW executable file (binary file, no header)
+ hex        - compile and generate <neorv32_raw_exe.hex> RAW executable file (hex char file, no header)
+ image      - compile and generate VHDL IMEM boot image (for application, no header) in local folder
+ install    - compile, generate and install VHDL IMEM boot image (for application, no header)
+ sim        - in-console simulation using default/simple testbench and GHDL
+ all        - exe + install + hex + bin + asm
+ elf_info   - show ELF layout info
+ clean      - clean up project home folder
+ clean_all  - clean up whole project, core libraries and image generator
+ bl_image   - compile and generate VHDL BOOTROM boot image (for bootloader only, no header) in local folder
+ bootloader - compile, generate and install VHDL BOOTROM boot image (for bootloader only, no header)
 
-== Variables ==
+=== Variables ===
  USER_FLAGS   - Custom toolchain flags [append only], default ""
  EFFORT       - Optimization level, default "-Os"
  MARCH        - Machine architecture, default "rv32i"
@@ -190,7 +192,7 @@ makefile (`sw/common/common.mk`):
 The makefile configuration variables can be overridden or extended directly when invoking the makefile. For
 example `$ make MARCH=rv32ic clean_all exe` overrides the default `MARCH` variable definitions.
 Permanent modifications/definitions can be made in the project-local makefile
-(e.g., `sw/example/blink_led/makefile`).
+(e.g., `sw/example/demo_blink_led/makefile`).
 
 .Default Makefile Configuration
 [source,makefile]
@@ -255,6 +257,7 @@ The following default compiler flags are used for compiling an application. Thes
 | `-lc`                 | Search for the standard C library when linking.
 | `-lgcc`               | Make sure we have no unresolved references to internal GCC library subroutines.
 | `-mno-fdiv`           | Use built-in software functions for floating-point divisions and square roots (since the according instructions are not supported yet).
+| `-g`                  | Include debugging information/symbols in ELF.
 |=======================
 
 :sectnums:
@@ -479,25 +482,21 @@ and placed right before the actual application code so it gets executed right af
 The `crt0.S` start-up performs the following operations:
 
 [start=1]
-. Disable interrupts globally by clearing <<_mstatus>> (including `mie`).
-. Initialize all integer registers `x1 - x31` (or just `x1 - x15` when using the `E` CPU extension is enabled) to a defined value.
-. Initialize all CPU core CSRs and also install a default "dummy" trap handler for _all_ exceptions. This is used for the very early boot
-phase where the application might not provide a trap handling yet.
-** Set <<_mstatus>>`.mpp` to `11`; previous mode is machine mode.
-** All interrupt sources are disabled and all pending interrupts are cleared.
+. Clear <<_mstatus>>.
+. Clear <<_mie>> disabling all interrupt sources.
+. Install an early-boot dummy trap handler to <<_mtvec>>.
 . Initialize the global pointer `gp` and the stack pointer `sp` according to the <<_ram_layout>> provided by the linker script.
-during the early boot phase.
-. Clear <<_cycleh>> and <<_instreth>> counter CSRs.
-. Clear the `.bss` section defined by the linker script.
-. Copy read-only data from the `.text` section to the `.data` section to set initialized variables.
-. Call and execute all _constructors_ (if there are any)
+. Initialize all integer register `x1 - x31` (only `x1 - x15` if the `E` CPU extension is enabled).
+. Setup `.data` section to configure initialized variables.
+. Clear the `.bss` section.
+. Call all _constructors_ (if there are any).
 . Call the application's `main` function (with no arguments: `argc` = `argv` = 0).
 . If `main` returns:
-** interrupts are globally disabled by clearing <<_mstatus>>`.mie`.
-** the return value is copied to the <<_mscratch>> CSR to allow inspection by the on-chip debugger.
-** call and execute all _destructors_ (if there are any).
-** an optional <<_after_main_handler>> is called (if defined at all).
-** the CPU enters sleep mode (using the `wfi` instruction) or remains in an endless loop (if `wfi` "returns").
+** Tnterrupts are disabled by clearing <<_mie>>.
+** `mains`'s return value is copied to the <<_mscratch>> CSR to allow inspection by the debugger.
+** Call all _destructors_ (if there are any).
+** An optional <<_after_main_handler>> is called (if defined at all).
+** The CPU enters sleep mode (using the `wfi` instruction) or remains in an endless loop (if `wfi` "returns").
 
 .Bootloader Start-Up Code
 [NOTE]

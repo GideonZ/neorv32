@@ -7,15 +7,12 @@
 -- # - Zbs: Single-bit instructions                                                                #
 -- # - Zbc: Carry-less multiplication instructions                                                 #
 -- #                                                                                               #
--- # Processor/CPU configuration generic FAST_MUL_EN can be used to enable implementation of fast  #
--- # (full-parallel) logic for all shift-related instructions (ROL, ROR[I], CLZ, CTZ, CPOP).       #
--- #                                                                                               #
--- # NOTE: This is a first implementation of the bit-manipulation co-processor that supports all   #
--- #       sub-sets of the B extension. Hence, it is not yet optimized for area, latency or speed. #
+-- # Processor/CPU configuration generic FAST_MUL_EN is also used to enable implementation of fast #
+-- # (full-parallel) logic for all shift-related B-instructions (ROL, ROR[I], CLZ, CTZ, CPOP).     #
 -- # ********************************************************************************************* #
 -- # BSD 3-Clause License                                                                          #
 -- #                                                                                               #
--- # Copyright (c) 2022, Stephan Nolting. All rights reserved.                                     #
+-- # Copyright (c) 2023, Stephan Nolting. All rights reserved.                                     #
 -- #                                                                                               #
 -- # Redistribution and use in source and binary forms, with or without modification, are          #
 -- # permitted provided that the following conditions are met:                                     #
@@ -53,7 +50,8 @@ use neorv32.neorv32_package.all;
 
 entity neorv32_cpu_cp_bitmanip is
   generic (
-    FAST_SHIFT_EN : boolean -- use barrel shifter for shift operations
+    XLEN          : natural; -- data path width
+    FAST_SHIFT_EN : boolean  -- use barrel shifter for shift operations
   );
   port (
     -- global control --
@@ -63,11 +61,11 @@ entity neorv32_cpu_cp_bitmanip is
     start_i : in  std_ulogic; -- trigger operation
     -- data input --
     cmp_i   : in  std_ulogic_vector(1 downto 0); -- comparator status
-    rs1_i   : in  std_ulogic_vector(data_width_c-1 downto 0); -- rf source 1
-    rs2_i   : in  std_ulogic_vector(data_width_c-1 downto 0); -- rf source 2
-    shamt_i : in  std_ulogic_vector(index_size_f(data_width_c)-1 downto 0); -- shift amount
+    rs1_i   : in  std_ulogic_vector(XLEN-1 downto 0); -- rf source 1
+    rs2_i   : in  std_ulogic_vector(XLEN-1 downto 0); -- rf source 2
+    shamt_i : in  std_ulogic_vector(index_size_f(XLEN)-1 downto 0); -- shift amount
     -- result and status --
-    res_o   : out std_ulogic_vector(data_width_c-1 downto 0); -- operation result
+    res_o   : out std_ulogic_vector(XLEN-1 downto 0); -- operation result
     valid_o : out std_ulogic -- data output valid
   );
 end neorv32_cpu_cp_bitmanip;
@@ -128,43 +126,43 @@ architecture neorv32_cpu_cp_bitmanip_rtl of neorv32_cpu_cp_bitmanip is
   signal valid        : std_ulogic;
 
   -- operand buffers --
-  signal rs1_reg  : std_ulogic_vector(data_width_c-1 downto 0);
-  signal rs2_reg  : std_ulogic_vector(data_width_c-1 downto 0);
-  signal sha_reg  : std_ulogic_vector(index_size_f(data_width_c)-1 downto 0);
+  signal rs1_reg  : std_ulogic_vector(XLEN-1 downto 0);
+  signal rs2_reg  : std_ulogic_vector(XLEN-1 downto 0);
+  signal sha_reg  : std_ulogic_vector(index_size_f(XLEN)-1 downto 0);
   signal less_reg : std_ulogic;
 
   -- serial shifter --
   type shifter_t is record
     start   : std_ulogic;
     run     : std_ulogic;
-    bcnt    : std_ulogic_vector(index_size_f(data_width_c) downto 0); -- bit counter
-    cnt     : std_ulogic_vector(index_size_f(data_width_c) downto 0); -- iteration counter
-    cnt_max : std_ulogic_vector(index_size_f(data_width_c) downto 0);
-    sreg    : std_ulogic_vector(data_width_c-1 downto 0);
+    bcnt    : std_ulogic_vector(index_size_f(XLEN) downto 0); -- bit counter
+    cnt     : std_ulogic_vector(index_size_f(XLEN) downto 0); -- iteration counter
+    cnt_max : std_ulogic_vector(index_size_f(XLEN) downto 0);
+    sreg    : std_ulogic_vector(XLEN-1 downto 0);
   end record;
   signal shifter : shifter_t;
 
   -- barrel shifter --
-  type bs_level_t is array (index_size_f(data_width_c) downto 0) of std_ulogic_vector(data_width_c-1 downto 0);
+  type bs_level_t is array (index_size_f(XLEN) downto 0) of std_ulogic_vector(XLEN-1 downto 0);
   signal bs_level : bs_level_t;
 
   -- operation results --
-  type res_t is array (0 to op_width_c-1) of std_ulogic_vector(data_width_c-1 downto 0);
+  type res_t is array (0 to op_width_c-1) of std_ulogic_vector(XLEN-1 downto 0);
   signal res_int, res_out : res_t;
 
   -- shifted-add unit --
-  signal adder_core : std_ulogic_vector(data_width_c-1 downto 0);
+  signal adder_core : std_ulogic_vector(XLEN-1 downto 0);
 
   -- one-hot decoder --
-  signal one_hot_core : std_ulogic_vector(data_width_c-1 downto 0);
+  signal one_hot_core : std_ulogic_vector(XLEN-1 downto 0);
 
   -- carry-less multiplier --
   type clmultiplier_t is record
     start : std_ulogic;
     busy  : std_ulogic;
-    rs2   : std_ulogic_vector(data_width_c-1 downto 0);
-    cnt   : std_ulogic_vector(index_size_f(data_width_c) downto 0);
-    prod  : std_ulogic_vector(2*data_width_c-1 downto 0);
+    rs2   : std_ulogic_vector(XLEN-1 downto 0);
+    cnt   : std_ulogic_vector(index_size_f(XLEN) downto 0);
+    prod  : std_ulogic_vector(2*XLEN-1 downto 0);
   end record;
   signal clmul : clmultiplier_t;
 
@@ -184,8 +182,8 @@ begin
 
   -- Instruction Decoding (One-Hot) ---------------------------------------------------------
   -- -------------------------------------------------------------------------------------------
-  -- a minimal decoding logic is used here just to distinguish between the different B instruction
-  -- a more precise decoding and valid-instruction check is done by the CPU control unit
+  -- A minimal decoding logic is used here just to distinguish between the different B instruction.
+  -- A more precise decoding as well as a valid-instruction-check is performed by the CPU control unit.
 
   -- Zbb - Basic bit-manipulation instructions --
   cmd(op_andn_c)   <= '1' when (zbb_en_c = true) and (ctrl_i(ctrl_ir_funct12_10_c downto ctrl_ir_funct12_9_c) = "10") and (ctrl_i(ctrl_ir_funct12_7_c) = '0') and (ctrl_i(ctrl_ir_funct3_1_c downto ctrl_ir_funct3_0_c) = "11") else '0';
@@ -198,14 +196,14 @@ begin
   --
   cmd(op_orcb_c)   <= '1' when (zbb_en_c = true) and (ctrl_i(ctrl_ir_funct12_10_c downto ctrl_ir_funct12_9_c) = "01") and (ctrl_i(ctrl_ir_funct12_7_c) = '1') and (ctrl_i(ctrl_ir_funct3_2_c downto ctrl_ir_funct3_0_c) = "101") else '0';
   --
-  cmd(op_clz_c)    <= '1' when (zbb_en_c = true) and (ctrl_i(ctrl_ir_funct12_10_c downto ctrl_ir_funct12_9_c) = "11") and (ctrl_i(ctrl_ir_funct12_7_c) = '0') and (ctrl_i(ctrl_ir_funct12_2_c downto ctrl_ir_funct12_0_c) = "000") else '0';
-  cmd(op_ctz_c)    <= '1' when (zbb_en_c = true) and (ctrl_i(ctrl_ir_funct12_10_c downto ctrl_ir_funct12_9_c) = "11") and (ctrl_i(ctrl_ir_funct12_7_c) = '0') and (ctrl_i(ctrl_ir_funct12_2_c downto ctrl_ir_funct12_0_c) = "001") else '0';
-  cmd(op_cpop_c)   <= '1' when (zbb_en_c = true) and (ctrl_i(ctrl_ir_funct12_10_c downto ctrl_ir_funct12_9_c) = "11") and (ctrl_i(ctrl_ir_funct12_7_c) = '0') and (ctrl_i(ctrl_ir_funct12_2_c downto ctrl_ir_funct12_0_c) = "010") and (ctrl_i(ctrl_ir_opcode7_5_c) = '0') else '0';
-  cmd(op_sextb_c)  <= '1' when (zbb_en_c = true) and (ctrl_i(ctrl_ir_funct12_10_c downto ctrl_ir_funct12_9_c) = "11") and (ctrl_i(ctrl_ir_funct12_7_c) = '0') and (ctrl_i(ctrl_ir_funct12_2_c downto ctrl_ir_funct12_0_c) = "100") and (ctrl_i(ctrl_ir_funct3_2_c) = '0')  and (ctrl_i(ctrl_ir_opcode7_5_c) = '0') else '0';
-  cmd(op_sexth_c)  <= '1' when (zbb_en_c = true) and (ctrl_i(ctrl_ir_funct12_10_c downto ctrl_ir_funct12_9_c) = "11") and (ctrl_i(ctrl_ir_funct12_7_c) = '0') and (ctrl_i(ctrl_ir_funct12_2_c downto ctrl_ir_funct12_0_c) = "101") and (ctrl_i(ctrl_ir_funct3_2_c) = '0') and (ctrl_i(ctrl_ir_opcode7_5_c) = '0') else '0';
-  cmd(op_rol_c)    <= '1' when (zbb_en_c = true) and (ctrl_i(ctrl_ir_funct12_10_c downto ctrl_ir_funct12_9_c) = "11") and (ctrl_i(ctrl_ir_funct12_7_c) = '0') and (ctrl_i(ctrl_ir_funct3_2_c downto ctrl_ir_funct3_0_c) = "001") and (ctrl_i(ctrl_ir_opcode7_5_c) = '1') else '0';
-  cmd(op_ror_c)    <= '1' when (zbb_en_c = true) and (ctrl_i(ctrl_ir_funct12_10_c downto ctrl_ir_funct12_9_c) = "11") and (ctrl_i(ctrl_ir_funct12_7_c) = '0') and (ctrl_i(ctrl_ir_funct3_2_c downto ctrl_ir_funct3_0_c) = "101") and (ctrl_i(ctrl_ir_funct3_2_c) = '1') else '0';
-  cmd(op_rev8_c)   <= '1' when (zbb_en_c = true) and (ctrl_i(ctrl_ir_funct12_10_c downto ctrl_ir_funct12_9_c) = "11") and (ctrl_i(ctrl_ir_funct12_7_c) = '1') and (ctrl_i(ctrl_ir_funct3_2_c downto ctrl_ir_funct3_0_c) = "101") else '0';
+  cmd(op_clz_c)    <= '1' when (zbb_en_c = true) and (ctrl_i(ctrl_ir_funct12_10_c downto ctrl_ir_funct12_9_c) = "11") and (ctrl_i(ctrl_ir_funct12_7_c) = '0') and (ctrl_i(ctrl_ir_funct12_2_c downto ctrl_ir_funct12_0_c) = "000") and (ctrl_i(ctrl_ir_opcode7_5_c) = '0') and (ctrl_i(ctrl_ir_funct3_2_c) = '0') else '0';
+  cmd(op_ctz_c)    <= '1' when (zbb_en_c = true) and (ctrl_i(ctrl_ir_funct12_10_c downto ctrl_ir_funct12_9_c) = "11") and (ctrl_i(ctrl_ir_funct12_7_c) = '0') and (ctrl_i(ctrl_ir_funct12_2_c downto ctrl_ir_funct12_0_c) = "001") and (ctrl_i(ctrl_ir_opcode7_5_c) = '0') and (ctrl_i(ctrl_ir_funct3_2_c) = '0') else '0';
+  cmd(op_cpop_c)   <= '1' when (zbb_en_c = true) and (ctrl_i(ctrl_ir_funct12_10_c downto ctrl_ir_funct12_9_c) = "11") and (ctrl_i(ctrl_ir_funct12_7_c) = '0') and (ctrl_i(ctrl_ir_funct12_2_c downto ctrl_ir_funct12_0_c) = "010") and (ctrl_i(ctrl_ir_opcode7_5_c) = '0') and (ctrl_i(ctrl_ir_funct3_2_c) = '0') else '0';
+  cmd(op_sextb_c)  <= '1' when (zbb_en_c = true) and (ctrl_i(ctrl_ir_funct12_10_c downto ctrl_ir_funct12_9_c) = "11") and (ctrl_i(ctrl_ir_funct12_7_c) = '0') and (ctrl_i(ctrl_ir_funct12_2_c downto ctrl_ir_funct12_0_c) = "100") and (ctrl_i(ctrl_ir_opcode7_5_c) = '0') and (ctrl_i(ctrl_ir_funct3_2_c) = '0') else '0';
+  cmd(op_sexth_c)  <= '1' when (zbb_en_c = true) and (ctrl_i(ctrl_ir_funct12_10_c downto ctrl_ir_funct12_9_c) = "11") and (ctrl_i(ctrl_ir_funct12_7_c) = '0') and (ctrl_i(ctrl_ir_funct12_2_c downto ctrl_ir_funct12_0_c) = "101") and (ctrl_i(ctrl_ir_opcode7_5_c) = '0') and (ctrl_i(ctrl_ir_funct3_2_c) = '0') else '0';
+  cmd(op_rol_c)    <= '1' when (zbb_en_c = true) and (ctrl_i(ctrl_ir_funct12_10_c downto ctrl_ir_funct12_9_c) = "11") and (ctrl_i(ctrl_ir_funct12_7_c) = '0') and (ctrl_i(ctrl_ir_funct3_2_c  downto ctrl_ir_funct3_0_c)  = "001") and (ctrl_i(ctrl_ir_opcode7_5_c) = '1') else '0';
+  cmd(op_ror_c)    <= '1' when (zbb_en_c = true) and (ctrl_i(ctrl_ir_funct12_10_c downto ctrl_ir_funct12_9_c) = "11") and (ctrl_i(ctrl_ir_funct12_7_c) = '0') and (ctrl_i(ctrl_ir_funct3_2_c  downto ctrl_ir_funct3_0_c)  = "101") and                                         (ctrl_i(ctrl_ir_funct3_2_c) = '1') else '0';
+  cmd(op_rev8_c)   <= '1' when (zbb_en_c = true) and (ctrl_i(ctrl_ir_funct12_10_c downto ctrl_ir_funct12_9_c) = "11") and (ctrl_i(ctrl_ir_funct12_7_c) = '1') and (ctrl_i(ctrl_ir_funct3_2_c  downto ctrl_ir_funct3_0_c)  = "101") else '0';
 
   -- Zba - Address generation instructions --
   cmd(op_sh1add_c) <= '1' when (zba_en_c = true) and (ctrl_i(ctrl_ir_funct12_10_c downto ctrl_ir_funct12_9_c) = "01") and (ctrl_i(ctrl_ir_funct12_7_c) = '0') and (ctrl_i(ctrl_ir_funct3_2_c downto ctrl_ir_funct3_1_c) = "01") else '0';
@@ -230,11 +228,11 @@ begin
   begin
     if (rstn_i = '0') then
       ctrl_state    <= S_IDLE;
-      cmd_buf       <= (others => '-');
-      rs1_reg       <= (others => '-');
-      rs2_reg       <= (others => '-');
-      sha_reg       <= (others => '-');
-      less_reg      <= '-';
+      cmd_buf       <= (others => '0');
+      rs1_reg       <= (others => '0');
+      rs2_reg       <= (others => '0');
+      sha_reg       <= (others => '0');
+      less_reg      <= '0';
       clmul.start   <= '0';
       shifter.start <= '0';
       valid         <= '0';
@@ -366,15 +364,15 @@ begin
     begin
       -- input level: convert left shifts to right shifts --
       if (cmd_buf(op_rol_c) = '1') then -- is left shift?
-        bs_level(index_size_f(data_width_c)) <= bit_rev_f(rs1_reg); -- reverse bit order of input operand
+        bs_level(index_size_f(XLEN)) <= bit_rev_f(rs1_reg); -- reverse bit order of input operand
       else
-        bs_level(index_size_f(data_width_c)) <= rs1_reg;
+        bs_level(index_size_f(XLEN)) <= rs1_reg;
       end if;
       -- shifter array --
-      for i in index_size_f(data_width_c)-1 downto 0 loop
+      for i in index_size_f(XLEN)-1 downto 0 loop
         if (sha_reg(i) = '1') then
-          bs_level(i)(data_width_c-1 downto data_width_c-(2**i)) <= bs_level(i+1)((2**i)-1 downto 0);
-          bs_level(i)((data_width_c-(2**i))-1 downto 0) <= bs_level(i+1)(data_width_c-1 downto 2**i);
+          bs_level(i)(XLEN-1 downto XLEN-(2**i)) <= bs_level(i+1)((2**i)-1 downto 0);
+          bs_level(i)((XLEN-(2**i))-1 downto 0)  <= bs_level(i+1)(XLEN-1 downto 2**i);
         else
           bs_level(i) <= bs_level(i+1);
         end if;
@@ -399,13 +397,12 @@ begin
   -- Shifted-Add Core -----------------------------------------------------------------------
   -- -------------------------------------------------------------------------------------------
   shift_adder: process(rs1_reg, rs2_reg, ctrl_i)
-    variable opb_v : std_ulogic_vector(data_width_c-1 downto 0);
+    variable opb_v : std_ulogic_vector(XLEN-1 downto 0);
   begin
     case ctrl_i(ctrl_ir_funct3_2_c downto ctrl_ir_funct3_1_c) is
       when "01"   => opb_v := rs1_reg(rs1_reg'left-1 downto 0) & '0';   -- << 1
       when "10"   => opb_v := rs1_reg(rs1_reg'left-2 downto 0) & "00";  -- << 2
-      when "11"   => opb_v := rs1_reg(rs1_reg'left-3 downto 0) & "000"; -- << 3
-      when others => opb_v := (others => '-'); -- undefined
+      when others => opb_v := rs1_reg(rs1_reg'left-3 downto 0) & "000"; -- << 3
     end case;
     adder_core <= std_ulogic_vector(unsigned(rs2_reg) + unsigned(opb_v));
   end process shift_adder;
@@ -416,9 +413,7 @@ begin
   shift_one_hot: process(sha_reg)
   begin
     one_hot_core <= (others => '0');
-    if (zbs_en_c = true) then
-      one_hot_core(to_integer(unsigned(sha_reg))) <= '1';
-    end if;
+    one_hot_core(to_integer(unsigned(sha_reg))) <= '1';
   end process shift_one_hot;
 
 
@@ -463,12 +458,12 @@ begin
   res_int(op_xnor_c) <= rs1_reg xor (not rs2_reg);
 
   -- count leading/trailing zeros --
-  res_int(op_clz_c)(data_width_c-1 downto shifter.cnt'left+1) <= (others => '0');
+  res_int(op_clz_c)(XLEN-1 downto shifter.cnt'left+1) <= (others => '0');
   res_int(op_clz_c)(shifter.cnt'left downto 0) <= shifter.cnt;
   res_int(op_ctz_c) <= (others => '0'); -- unused/redundant
 
   -- count set bits --
-  res_int(op_cpop_c)(data_width_c-1 downto shifter.bcnt'left+1) <= (others => '0');
+  res_int(op_cpop_c)(XLEN-1 downto shifter.bcnt'left+1) <= (others => '0');
   res_int(op_cpop_c)(shifter.bcnt'left downto 0) <= shifter.bcnt;
 
   -- min/max select --
@@ -476,11 +471,11 @@ begin
   res_int(op_max_c) <= (others => '0'); -- unused/redundant
 
   -- sign-extension --
-  res_int(op_sextb_c)(data_width_c-1 downto 8) <= (others => rs1_reg(7));
+  res_int(op_sextb_c)(XLEN-1 downto 8) <= (others => rs1_reg(7));
   res_int(op_sextb_c)(7 downto 0) <= rs1_reg(7 downto 0); -- sign-extend byte
-  res_int(op_sexth_c)(data_width_c-1 downto 16) <= (others => rs1_reg(15));
+  res_int(op_sexth_c)(XLEN-1 downto 16) <= (others => rs1_reg(15));
   res_int(op_sexth_c)(15 downto 0) <= rs1_reg(15 downto 0); -- sign-extend half-word
-  res_int(op_zexth_c)(data_width_c-1 downto 16) <= (others => '0');
+  res_int(op_zexth_c)(XLEN-1 downto 16) <= (others => '0');
   res_int(op_zexth_c)(15 downto 0) <= rs1_reg(15 downto 0); -- zero-extend half-word
 
   -- rotate right/left --
@@ -489,7 +484,7 @@ begin
 
   -- or-combine.byte --
   or_combine_gen:
-  for i in 0 to (data_width_c/8)-1 generate -- sub-byte loop
+  for i in 0 to (XLEN/8)-1 generate -- sub-byte loop
     res_int(op_orcb_c)(i*8+7 downto i*8) <= (others => or_reduce_f(rs1_reg(i*8+7 downto i*8)));
   end generate; -- i
 
@@ -503,7 +498,7 @@ begin
 
   -- single-bit instructions --
   res_int(op_bclr_c) <= rs1_reg and (not one_hot_core);
-  res_int(op_bext_c)(data_width_c-1 downto 1) <= (others => '0');
+  res_int(op_bext_c)(XLEN-1 downto 1) <= (others => '0');
   res_int(op_bext_c)(0) <= '1' when (or_reduce_f(rs1_reg and one_hot_core) = '1') else '0';
   res_int(op_binv_c) <= rs1_reg xor one_hot_core;
   res_int(op_bset_c) <= rs1_reg or one_hot_core;
@@ -541,7 +536,7 @@ begin
   res_out(op_binv_c) <= res_int(op_binv_c) when (cmd_buf(op_binv_c) = '1') else (others => '0');
   res_out(op_bset_c) <= res_int(op_bset_c) when (cmd_buf(op_bset_c) = '1') else (others => '0');
   --
-  res_out(op_clmul_c)  <= res_int(op_clmul_c)  when (cmd_buf(op_clmul_c) = '1')  else (others => '0');
+  res_out(op_clmul_c)  <= res_int(op_clmul_c)  when (cmd_buf(op_clmul_c)  = '1') else (others => '0');
   res_out(op_clmulh_c) <= res_int(op_clmulh_c) when (cmd_buf(op_clmulh_c) = '1') else (others => '0');
   res_out(op_clmulr_c) <= res_int(op_clmulr_c) when (cmd_buf(op_clmulr_c) = '1') else (others => '0');
 

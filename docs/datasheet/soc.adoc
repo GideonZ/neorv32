@@ -75,7 +75,7 @@ bits/channels are hardwired to zero.
 | `jtag_trst_i`    |   1 |     in | TAP reset, low-active (optional footnote:[Pull high if not used.])
 | `jtag_tck_i`     |   1 |     in | serial clock
 | `jtag_tdi_i`     |   1 |     in | serial data input
-| `jtag_tdo_o`     |   1 |    out | serial data output footnote:[If the on-chip debugger is not implemented (_ON_CHIP_DEBUGGER_EN_ = false) `jtag_tdi_i` is directly forwarded to `jtag_tdo_o` to maintain the JTAG chain.]
+| `jtag_tdo_o`     |   1 |    out | serial data output footnote:[If the on-chip debugger is not implemented (<<_on_chip_debugger_en>> = false) `jtag_tdi_i` is directly forwarded to `jtag_tdo_o` to maintain the JTAG chain.]
 | `jtag_tms_i`     |   1 |     in | mode select
 4+^| **External Bus Interface (<<_processor_external_memory_interface_wishbone_axi4_lite,WISHBONE>>)**
 | `wb_tag_o`       |   3 |    out | tag (access type identifier)
@@ -136,9 +136,6 @@ bits/channels are hardwired to zero.
 | `cfs_out_o`      |   32 |   out | custom CFS output signal conduit
 4+^| **Smart LED Interface - NeoPixel(TM) compatible (<<_smart_led_interface_neoled,NEOLED>>)**
 | `neoled_o`       |    1 |   out | asynchronous serial data output
-4+^| **System time (<<_machine_system_timer_mtime,MTIME>>)**
-| `mtime_i`        |   64 |    in | machine timer time from _external MTIME_ unit if the processor-internal _MTIME_ unit is not implemented
-| `mtime_o`        |   64 |   out | machine timer time from _internal MTIME_ unit if the processor-internal _MTIME_ unit is implemented
 4+^| **External Interrupts (<<_processor_interrupts, XIRQ>>)**
 | `xirq_i`         |   32 |    in | external interrupt requests
 4+^| **RISC-V Machine-Level <<_processor_interrupts, CPU Interrupts>>**
@@ -252,7 +249,8 @@ Software can retrieve this value from the <<_system_configuration_information_me
 [frame="all",grid="none"]
 |======
 | **ON_CHIP_DEBUGGER_EN** | _boolean_ | false
-3+| Implement the on-chip debugger (OCD) and the CPU debug mode when true.
+3+| Implement the on-chip debugger (OCD) and the CPU debug mode when true. This generic is directly passed
+to the CPU's <<_cpu_extension_riscv_sdext>> and <<_cpu_extension_riscv_sdtrig>> generics.
 See section <<_on_chip_debugger_ocd>> for more information.
 |======
 
@@ -454,11 +452,17 @@ The state of this generic can be retrieved by software via the <<_mxisa>> CSR.
 [cols="4,4,2"]
 [frame="all",grid="none"]
 |======
-| **CPU_IPB_ENTRIES** | _natural_ | 2
+| **CPU_IPB_ENTRIES** | _natural_ | 1
 3+| This generic configures the number of entries in the CPU's instruction prefetch buffer.
-The value has to be a power of two and has to be greater than or equal to two (>= 2).
-Long linear sequences of code can benefit from an increased IPB size.
+The value has to be a power of two and has to be greater than or equal to one (>= 1). The
+IPB can help improving memory access latency. Furthermore, long linear code sequences will
+benefit from an increased IPB size.
 |======
+
+[WARNING]
+If the compressed ISA extension `_CPU_EXTENSION_RISCV_C_` (<<_cpu_extension_riscv_c>>) is enabled and the IPB depth
+is set to 1, this configuration is internally overridden and the IPB will be implemented with **2** entries. This is required
+for handling unaligned 32-bit instructions.
 
 
 // ####################################################################################################################
@@ -531,7 +535,7 @@ If the size is less than 64-bit, the unused MSB-aligned counter bits are hardwir
 [frame="all",grid="none"]
 |======
 | **MEM_INT_IMEM_EN** | _boolean_ | false
-3+| Implement processor-internal <<_instruction_memory_imem> when true.
+3+| Implement processor-internal <<_instruction_memory_imem>> when true.
 See sections <<_address_space>> for more information.
 |======
 
@@ -1125,32 +1129,36 @@ _enable_ bit in the according module's control register), it is automatically de
 :sectnums:
 === Processor Reset
 
-The processor provides two reset systems: an _external_ one and an _internal_ one. The external reset is triggered by
-the asynchronous, low-active `rstn_i` top entity signal. The internal reset is a synchronous, low-active reset that
-can be triggered by the external reset, the <<_on_chip_debugger_ocd>> and the <<_watchdog_timer_wdt>>.
+.Processor Reset Signal
+[IMPORTANT]
+Always make sure to connect the processor's reset signal `rstn_i` to a valid reset source (a button, the "locked"
+signal of a PLL, a dedicated reset controller, etc.). **Do not assign a static value / connect a static signal to it!**
 
-If the external hardware reset (`rstn_i`) is active it will be _asynchronously_ applied to all processor modules. An
-internal shift register ensures that the system wide reset will be active for at least 4 clock cycles. After that,
-the system wide reset is de-asserted _synchronously_ at a _falling_ edge of the main clock to ensure there are no
-meta-stable situation (like de-asserting reset at a rising edge).
+The processor-wide reset can be triggered at any of the following sources:
 
-If one of the internal reset sources trigger a reset, this will be applied _synchronously_ to all processor modules
-at a rising edge. This signal is also extended to be active for at least 4 clock cycles. After that, the system wide
-reset is also de-asserted _synchronously_ at a _falling_ edge.
+* the asynchronous low-active `rstn_i` top entity input signal
+* the <<_on_chip_debugger_ocd>>
+* the <<_watchdog_timer_wdt>>
 
-[TIP]
-The EE Times provided a nice article about FPGA resets. The reset system of the NEORV32 is loosely based on this
-article: https://www.eetimes.com/how-do-i-reset-my-fpga/
+If any of these sources trigger a reset, the internal reset will be triggered for at least clock cycles resetting
+the CPU, the <<_processor_clocking>> system and the IO/peripheral devices. The internal reset is asserted
+_aysynchronoulsy_ if triggered by the external `rstn_i` signal. For internal sources, the global reset is asserted
+_synchronously_. If the reset cause gets inactive the internal reset is de-asserted _synchronously_ at a falling
+clock edge.
 
-The system-wide reset will reset the CPU, the <<_processor_clocking>> system and the IO/peripheral devices.
+Internally, all processor registers that actually do provide a hardware reset use an **asynchronous reset**. Using a
+synchronous reset might increase logic utilization (and might increase the critical path) for FPGAs that do not provide a
+"native" synchronous reset for their flip flops. Furthermore, an asynchronous reset ensures that the
+entire processor logic is reset to a defined state even if the main clock is not yet operational.
+
+In order to reduce routing constraints (and by this the actual hardware requirements), some _uncritical registers_
+of the NEORV32 CPU as well as many registers of the entire NEORV32 Processor **do not use a dedicated hardware reset**.
+For example there are several pipeline registers and "buffer" registers that do not require a defined
+initial state to ensure correct operation.
 
 [NOTE]
-Note that the system reset will **NOT** reset _all_ PCU register by default. See section <<_cpu_hardware_reset>>
-for more information.
-
-[NOTE]
-The system reset will only reset the control registers of each implemented IO/peripheral module. This will also
-reset the according "module enable flag" to zero, which - in turn - will cause a _synchronous_ and
+The system reset will only reset the control registers of each implemented IO/peripheral module. This control register
+reset will also reset the according "module enable flag" to zero, which - in turn - will cause a _synchronous_
 module-internal reset of the remaining logic.
 
 
@@ -1424,11 +1432,11 @@ The figure below shows the exemplary concepts for the two most common boot scena
 image::neorv32_boot_configurations.png[800]
 
 [NOTE]
-The configuration of internal or external data memory (DMEM; <<_mem_int_dmem_en>> = _true_ / _false_) is not further
+The configuration of internal or external data memory (DMEM; <<_mem_int_dmem_en>> = _true_ / _false_) is not
 relevant for the boot configuration itself. Hence, it is not further illustrated here.
 
 There are two general boot scenarios: _Indirect Boot_ (1a and 1b) and _Direct Boot_ (2a and 2b) configured via the
-<<_int_bootloader_en>> generic  If this generic is set **true** the _indirect_ boot scenario is used. This is also the
+<<_int_bootloader_en>> generic. If this generic is set **true** the _indirect_ boot scenario is used. This is also the
 default boot configuration of the processor. If <<_int_bootloader_en>> is set **false** the _direct_ boot scenario is used.
 
 [NOTE]
@@ -1470,7 +1478,6 @@ In contrast, boot scenario **2b** uses a processor-external IMEM (<<_mem_int_ime
 system designer is responsible for providing an initialized external memory that contains the actual application to be executed.
 If the external memory is not already initialized after reset, a simple ROM containing a "polling loop" can be implemented that is
 exited as soon as the application logic has finished initializing the memory with the actual application code.
-
 
 
 <<<

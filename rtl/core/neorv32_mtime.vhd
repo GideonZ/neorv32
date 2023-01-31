@@ -6,7 +6,7 @@
 -- # ********************************************************************************************* #
 -- # BSD 3-Clause License                                                                          #
 -- #                                                                                               #
--- # Copyright (c) 2022, Stephan Nolting. All rights reserved.                                     #
+-- # Copyright (c) 2023, Stephan Nolting. All rights reserved.                                     #
 -- #                                                                                               #
 -- # Redistribution and use in source and binary forms, with or without modification, are          #
 -- # permitted provided that the following conditions are met:                                     #
@@ -46,15 +46,13 @@ entity neorv32_mtime is
   port (
     -- host access --
     clk_i  : in  std_ulogic; -- global clock line
-    rstn_i : in  std_ulogic; -- global reset line, low-active
+    rstn_i : in  std_ulogic; -- global reset line, low-active, async
     addr_i : in  std_ulogic_vector(31 downto 0); -- address
     rden_i : in  std_ulogic; -- read enable
     wren_i : in  std_ulogic; -- write enable
     data_i : in  std_ulogic_vector(31 downto 0); -- data in
     data_o : out std_ulogic_vector(31 downto 0); -- data out
     ack_o  : out std_ulogic; -- transfer acknowledge
-    -- time output for CPU --
-    time_o : out std_ulogic_vector(63 downto 0); -- current system time
     -- interrupt --
     irq_o  : out std_ulogic  -- interrupt request
   );
@@ -102,21 +100,17 @@ begin
 
   -- Write Access ---------------------------------------------------------------------------
   -- -------------------------------------------------------------------------------------------
-  wr_access: process(rstn_i, clk_i)
+  write_access: process(rstn_i, clk_i)
   begin
     if (rstn_i = '0') then
-      ack_o         <= '-';
-      mtimecmp_lo   <= (others => '1'); -- all-one to prevent accidental interrupt after reset
-      mtimecmp_hi   <= (others => '1');
+      mtimecmp_lo   <= (others => '0');
+      mtimecmp_hi   <= (others => '0');
       mtime_lo_we   <= '0';
       mtime_hi_we   <= '0';
       mtime_lo      <= (others => '0');
       mtime_lo_ovfl <= (others => '0');
       mtime_hi      <= (others => '0');
     elsif rising_edge(clk_i) then
-      -- bus handshake --
-      ack_o <= rden or wren;
-
       -- mtimecmp --
       if (wren = '1') then
         if (addr = mtime_cmp_lo_addr_c) then
@@ -153,7 +147,7 @@ begin
         mtime_hi <= std_ulogic_vector(unsigned(mtime_hi) + unsigned(mtime_lo_ovfl));
       end if;
     end if;
-  end process wr_access;
+  end process write_access;
 
   -- mtime.time_LO increment --
   mtime_lo_nxt <= std_ulogic_vector(unsigned('0' & mtime_lo) + 1);
@@ -161,9 +155,10 @@ begin
 
   -- Read Access ----------------------------------------------------------------------------
   -- -------------------------------------------------------------------------------------------
-  rd_access: process(clk_i)
+  read_access: process(clk_i)
   begin
     if rising_edge(clk_i) then
+      ack_o  <= rden or wren; -- bus handshake
       data_o <= (others => '0'); -- default
       if (rden = '1') then
         case addr(3 downto 2) is
@@ -174,10 +169,7 @@ begin
         end case;
       end if;
     end if;
-  end process rd_access;
-
-  -- system time output for cpu --
-  time_o <= mtime_hi & mtime_lo; -- NOTE: low and high words are not in-sync here!
+  end process read_access;
 
 
   -- Comparator -----------------------------------------------------------------------------

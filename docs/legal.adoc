@@ -8,7 +8,7 @@
 
 **BSD 3-Clause License**
 
-Copyright (c) 2022, Stephan Nolting. All rights reserved.
+Copyright (c) 2023, Stephan Nolting. All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification, are permitted provided that
 the following conditions are met:
@@ -35,7 +35,7 @@ OF THE POSSIBILITY OF SUCH DAMAGE.
 ==========================
 **The NEORV32 RISC-V Processor** +
 HQ: https://github.com/stnolting/neorv32 +
-By Dipl.-Ing. Stephan Nolting +
+By Dipl.-Ing. (M.Sc.) Stephan Nolting +
 European Union, Germany +
 Contact: stnolting@gmail.com
 ==========================

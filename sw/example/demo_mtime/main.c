@@ -3,7 +3,7 @@
 // # ********************************************************************************************* #
 // # BSD 3-Clause License                                                                          #
 // #                                                                                               #
-// # Copyright (c) 2022, Stephan Nolting. All rights reserved.                                     #
+// # Copyright (c) 2023, Stephan Nolting. All rights reserved.                                     #
 // #                                                                                               #
 // # Redistribution and use in source and binary forms, with or without modification, are          #
 // # permitted provided that the following conditions are met:                                     #
@@ -73,13 +73,13 @@ int main() {
 
   // check if MTIME unit is implemented at all
   if (neorv32_mtime_available() == 0) {
-    neorv32_uart0_print("ERROR! MTIME timer not implemented!\n");
+    neorv32_uart0_puts("ERROR! MTIME timer not implemented!\n");
     return 1;
   }
 
   // Intro
-  neorv32_uart0_print("RISC-V Machine System Timer (MTIME) demo Program.\n"
-                      "Toggles GPIO.output(0) at 1Hz using the RISC-V 'MTI' interrupt.\n\n");
+  neorv32_uart0_puts("RISC-V Machine System Timer (MTIME) demo Program.\n"
+                     "Toggles GPIO.output(0) at 1Hz using the RISC-V 'MTI' interrupt.\n\n");
 
 
   // clear GPIO output port
@@ -87,15 +87,15 @@ int main() {
 
 
   // install MTIME interrupt handler to RTE
-  neorv32_rte_exception_install(RTE_TRAP_MTI, mtime_irq_handler);
+  neorv32_rte_handler_install(RTE_TRAP_MTI, mtime_irq_handler);
 
   // configure MTIME timer's first interrupt to appear after SYSTEM_CLOCK / 2 cycles (toggle at 2Hz)
   // starting from _now_
   neorv32_mtime_set_timecmp(neorv32_mtime_get_time() + (NEORV32_SYSINFO.CLK / 2));
 
   // enable interrupt
-  neorv32_cpu_irq_enable(CSR_MIE_MTIE); // enable MTIME interrupt
-  neorv32_cpu_eint(); // enable global interrupt flag
+  neorv32_cpu_csr_set(CSR_MIE, 1 << CSR_MIE_MTIE); // enable MTIME interrupt
+  neorv32_cpu_csr_set(CSR_MSTATUS, 1 << CSR_MSTATUS_MIE); // enable machine-mode interrupts
 
 
   // go to sleep mode and wait for interrupt

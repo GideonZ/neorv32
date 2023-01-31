@@ -3,7 +3,7 @@
 // # ********************************************************************************************* #
 // # BSD 3-Clause License                                                                          #
 // #                                                                                               #
-// # Copyright (c) 2022, Stephan Nolting. All rights reserved.                                     #
+// # Copyright (c) 2023, Stephan Nolting. All rights reserved.                                     #
 // #                                                                                               #
 // # Redistribution and use in source and binary forms, with or without modification, are          #
 // # permitted provided that the following conditions are met:                                     #
@@ -73,7 +73,7 @@ enum NEORV32_CSR_enum {
   CSR_MISA           = 0x301, /**< 0x301 - misa       (r/-): CPU ISA and extensions (read-only in NEORV32) */
   CSR_MIE            = 0x304, /**< 0x304 - mie        (r/w): Machine interrupt-enable register */
   CSR_MTVEC          = 0x305, /**< 0x305 - mtvec      (r/w): Machine trap-handler base address (for ALL traps) */
-  CSR_MCOUNTEREN     = 0x306, /**< 0x305 - mcounteren (r/w): Machine counter enable register (controls access rights from U-mode) */
+  CSR_MCOUNTEREN     = 0x306, /**< 0x305 - mcounteren (r/-): Machine counter enable register (controls access rights from U-mode) */
 
   CSR_MENVCFG        = 0x30a, /**< 0x30a - menvcfg (r/-): Machine environment configuration register */
 
@@ -118,8 +118,8 @@ enum NEORV32_CSR_enum {
   CSR_MSCRATCH       = 0x340, /**< 0x340 - mscratch (r/w): Machine scratch register */
   CSR_MEPC           = 0x341, /**< 0x341 - mepc     (r/w): Machine exception program counter */
   CSR_MCAUSE         = 0x342, /**< 0x342 - mcause   (r/w): Machine trap cause */
-  CSR_MTVAL          = 0x343, /**< 0x343 - mtval    (r/-): Machine trap value register */
-  CSR_MIP            = 0x344, /**< 0x344 - mip      (r/-): Machine interrupt pending register */
+  CSR_MTVAL          = 0x343, /**< 0x343 - mtval    (r/w): Machine trap value register */
+  CSR_MIP            = 0x344, /**< 0x344 - mip      (r/w): Machine interrupt pending register */
 
   /* physical memory protection */
   CSR_PMPCFG0        = 0x3a0, /**< 0x3a0 - pmpcfg0 (r/w): Physical memory protection configuration register 0 (entries 0..3) */
@@ -154,12 +154,12 @@ enum NEORV32_CSR_enum {
   CSR_MCONTEXT       = 0x7a8, /**< 0x7a8 - mcontext (r/(w)): Machine context register */
   CSR_SCONTEXT       = 0x7aa, /**< 0x7aa - scontext (r/(w)): Supervisor context register */
 
-  /* not accessible by m-mode software */
-//CSR_DCSR           = 0x7b0, /**< 0x7b0 - dcsr     (-/-): Debug status and control register */
-//CSR_DPC            = 0x7b1, /**< 0x7b1 - dpc      (-/-): Debug program counter */
-//CSR_DSCRATCH       = 0x7b2, /**< 0x7b2 - dscratch (-/-): Debug scratch register */
+  /* CPU debug mode CSRs - not accessible by software running outside of debug mode */
+  CSR_DCSR           = 0x7b0, /**< 0x7b0 - dcsr      (-/-): Debug status and control register */
+  CSR_DPC            = 0x7b1, /**< 0x7b1 - dpc       (-/-): Debug program counter */
+  CSR_DSCRATCH0      = 0x7b2, /**< 0x7b2 - dscratch0 (-/-): Debug scratch register */
 
-  /* counter and timers - low word */
+  /* machine counters and timers */
   CSR_MCYCLE         = 0xb00, /**< 0xb00 - mcycle   (r/w): Machine cycle counter low word */
   CSR_MINSTRET       = 0xb02, /**< 0xb02 - minstret (r/w): Machine instructions-retired counter low word */
 
@@ -226,77 +226,72 @@ enum NEORV32_CSR_enum {
   CSR_MHPMCOUNTER30H = 0xb9e, /**< 0xb9e - mhpmcounter30h (r/w): Machine hardware performance monitor 30 counter high word */
   CSR_MHPMCOUNTER31H = 0xb9f, /**< 0xb9f - mhpmcounter31h (r/w): Machine hardware performance monitor 31 counter high word */
 
+  /* user counters and timers */
   CSR_CYCLE          = 0xc00, /**< 0xc00 - cycle   (r/-): Cycle counter low word (from MCYCLE) */
-  CSR_TIME           = 0xc01, /**< 0xc01 - time    (r/-): Timer low word (from MTIME.TIME_LO) */
   CSR_INSTRET        = 0xc02, /**< 0xc02 - instret (r/-): Instructions-retired counter low word (from MINSTRET) */
 
-  /* not implemented */
-//CSR_HPMCOUNTER3    = 0xc03, /**< 0xc03 - hpmcounter3  (r/-): User hardware performance monitor 3  counter low word */
-//CSR_HPMCOUNTER4    = 0xc04, /**< 0xc04 - hpmcounter4  (r/-): User hardware performance monitor 4  counter low word */
-//CSR_HPMCOUNTER5    = 0xc05, /**< 0xc05 - hpmcounter5  (r/-): User hardware performance monitor 5  counter low word */
-//CSR_HPMCOUNTER6    = 0xc06, /**< 0xc06 - hpmcounter6  (r/-): User hardware performance monitor 6  counter low word */
-//CSR_HPMCOUNTER7    = 0xc07, /**< 0xc07 - hpmcounter7  (r/-): User hardware performance monitor 7  counter low word */
-//CSR_HPMCOUNTER8    = 0xc08, /**< 0xc08 - hpmcounter8  (r/-): User hardware performance monitor 8  counter low word */
-//CSR_HPMCOUNTER9    = 0xc09, /**< 0xc09 - hpmcounter9  (r/-): User hardware performance monitor 9  counter low word */
-//CSR_HPMCOUNTER10   = 0xc0a, /**< 0xc0a - hpmcounter10 (r/-): User hardware performance monitor 10 counter low word */
-//CSR_HPMCOUNTER11   = 0xc0b, /**< 0xc0b - hpmcounter11 (r/-): User hardware performance monitor 11 counter low word */
-//CSR_HPMCOUNTER12   = 0xc0c, /**< 0xc0c - hpmcounter12 (r/-): User hardware performance monitor 12 counter low word */
-//CSR_HPMCOUNTER13   = 0xc0d, /**< 0xc0d - hpmcounter13 (r/-): User hardware performance monitor 13 counter low word */
-//CSR_HPMCOUNTER14   = 0xc0e, /**< 0xc0e - hpmcounter14 (r/-): User hardware performance monitor 14 counter low word */
-//CSR_HPMCOUNTER15   = 0xc0f, /**< 0xc0f - hpmcounter15 (r/-): User hardware performance monitor 15 counter low word */
-//CSR_HPMCOUNTER16   = 0xc10, /**< 0xc10 - hpmcounter16 (r/-): User hardware performance monitor 16 counter low word */
-//CSR_HPMCOUNTER17   = 0xc11, /**< 0xc11 - hpmcounter17 (r/-): User hardware performance monitor 17 counter low word */
-//CSR_HPMCOUNTER18   = 0xc12, /**< 0xc12 - hpmcounter18 (r/-): User hardware performance monitor 18 counter low word */
-//CSR_HPMCOUNTER19   = 0xc13, /**< 0xc13 - hpmcounter19 (r/-): User hardware performance monitor 19 counter low word */
-//CSR_HPMCOUNTER20   = 0xc14, /**< 0xc14 - hpmcounter20 (r/-): User hardware performance monitor 20 counter low word */
-//CSR_HPMCOUNTER21   = 0xc15, /**< 0xc15 - hpmcounter21 (r/-): User hardware performance monitor 21 counter low word */
-//CSR_HPMCOUNTER22   = 0xc16, /**< 0xc16 - hpmcounter22 (r/-): User hardware performance monitor 22 counter low word */
-//CSR_HPMCOUNTER23   = 0xc17, /**< 0xc17 - hpmcounter23 (r/-): User hardware performance monitor 23 counter low word */
-//CSR_HPMCOUNTER24   = 0xc18, /**< 0xc18 - hpmcounter24 (r/-): User hardware performance monitor 24 counter low word */
-//CSR_HPMCOUNTER25   = 0xc19, /**< 0xc19 - hpmcounter25 (r/-): User hardware performance monitor 25 counter low word */
-//CSR_HPMCOUNTER26   = 0xc1a, /**< 0xc1a - hpmcounter26 (r/-): User hardware performance monitor 26 counter low word */
-//CSR_HPMCOUNTER27   = 0xc1b, /**< 0xc1b - hpmcounter27 (r/-): User hardware performance monitor 27 counter low word */
-//CSR_HPMCOUNTER28   = 0xc1c, /**< 0xc1c - hpmcounter28 (r/-): User hardware performance monitor 28 counter low word */
-//CSR_HPMCOUNTER29   = 0xc1d, /**< 0xc1d - hpmcounter29 (r/-): User hardware performance monitor 29 counter low word */
-//CSR_HPMCOUNTER30   = 0xc1e, /**< 0xc1e - hpmcounter30 (r/-): User hardware performance monitor 30 counter low word */
-//CSR_HPMCOUNTER31   = 0xc1f, /**< 0xc1f - hpmcounter31 (r/-): User hardware performance monitor 31 counter low word */
+  CSR_HPMCOUNTER3    = 0xc03, /**< 0xc03 - hpmcounter3  (r/-): User hardware performance monitor 3  counter low word */
+  CSR_HPMCOUNTER4    = 0xc04, /**< 0xc04 - hpmcounter4  (r/-): User hardware performance monitor 4  counter low word */
+  CSR_HPMCOUNTER5    = 0xc05, /**< 0xc05 - hpmcounter5  (r/-): User hardware performance monitor 5  counter low word */
+  CSR_HPMCOUNTER6    = 0xc06, /**< 0xc06 - hpmcounter6  (r/-): User hardware performance monitor 6  counter low word */
+  CSR_HPMCOUNTER7    = 0xc07, /**< 0xc07 - hpmcounter7  (r/-): User hardware performance monitor 7  counter low word */
+  CSR_HPMCOUNTER8    = 0xc08, /**< 0xc08 - hpmcounter8  (r/-): User hardware performance monitor 8  counter low word */
+  CSR_HPMCOUNTER9    = 0xc09, /**< 0xc09 - hpmcounter9  (r/-): User hardware performance monitor 9  counter low word */
+  CSR_HPMCOUNTER10   = 0xc0a, /**< 0xc0a - hpmcounter10 (r/-): User hardware performance monitor 10 counter low word */
+  CSR_HPMCOUNTER11   = 0xc0b, /**< 0xc0b - hpmcounter11 (r/-): User hardware performance monitor 11 counter low word */
+  CSR_HPMCOUNTER12   = 0xc0c, /**< 0xc0c - hpmcounter12 (r/-): User hardware performance monitor 12 counter low word */
+  CSR_HPMCOUNTER13   = 0xc0d, /**< 0xc0d - hpmcounter13 (r/-): User hardware performance monitor 13 counter low word */
+  CSR_HPMCOUNTER14   = 0xc0e, /**< 0xc0e - hpmcounter14 (r/-): User hardware performance monitor 14 counter low word */
+  CSR_HPMCOUNTER15   = 0xc0f, /**< 0xc0f - hpmcounter15 (r/-): User hardware performance monitor 15 counter low word */
+  CSR_HPMCOUNTER16   = 0xc10, /**< 0xc10 - hpmcounter16 (r/-): User hardware performance monitor 16 counter low word */
+  CSR_HPMCOUNTER17   = 0xc11, /**< 0xc11 - hpmcounter17 (r/-): User hardware performance monitor 17 counter low word */
+  CSR_HPMCOUNTER18   = 0xc12, /**< 0xc12 - hpmcounter18 (r/-): User hardware performance monitor 18 counter low word */
+  CSR_HPMCOUNTER19   = 0xc13, /**< 0xc13 - hpmcounter19 (r/-): User hardware performance monitor 19 counter low word */
+  CSR_HPMCOUNTER20   = 0xc14, /**< 0xc14 - hpmcounter20 (r/-): User hardware performance monitor 20 counter low word */
+  CSR_HPMCOUNTER21   = 0xc15, /**< 0xc15 - hpmcounter21 (r/-): User hardware performance monitor 21 counter low word */
+  CSR_HPMCOUNTER22   = 0xc16, /**< 0xc16 - hpmcounter22 (r/-): User hardware performance monitor 22 counter low word */
+  CSR_HPMCOUNTER23   = 0xc17, /**< 0xc17 - hpmcounter23 (r/-): User hardware performance monitor 23 counter low word */
+  CSR_HPMCOUNTER24   = 0xc18, /**< 0xc18 - hpmcounter24 (r/-): User hardware performance monitor 24 counter low word */
+  CSR_HPMCOUNTER25   = 0xc19, /**< 0xc19 - hpmcounter25 (r/-): User hardware performance monitor 25 counter low word */
+  CSR_HPMCOUNTER26   = 0xc1a, /**< 0xc1a - hpmcounter26 (r/-): User hardware performance monitor 26 counter low word */
+  CSR_HPMCOUNTER27   = 0xc1b, /**< 0xc1b - hpmcounter27 (r/-): User hardware performance monitor 27 counter low word */
+  CSR_HPMCOUNTER28   = 0xc1c, /**< 0xc1c - hpmcounter28 (r/-): User hardware performance monitor 28 counter low word */
+  CSR_HPMCOUNTER29   = 0xc1d, /**< 0xc1d - hpmcounter29 (r/-): User hardware performance monitor 29 counter low word */
+  CSR_HPMCOUNTER30   = 0xc1e, /**< 0xc1e - hpmcounter30 (r/-): User hardware performance monitor 30 counter low word */
+  CSR_HPMCOUNTER31   = 0xc1f, /**< 0xc1f - hpmcounter31 (r/-): User hardware performance monitor 31 counter low word */
 
-
-  /* counter and timers - high word */
   CSR_CYCLEH         = 0xc80, /**< 0xc80 - cycleh   (r/-): Cycle counter high word (from MCYCLEH) */
-  CSR_TIMEH          = 0xc81, /**< 0xc81 - timeh    (r/-): Timer high word (from MTIME.TIME_HI) */
   CSR_INSTRETH       = 0xc82, /**< 0xc82 - instreth (r/-): Instructions-retired counter high word (from MINSTRETH) */
 
-  /* not implemented */
-//CSR_HPMCOUNTER3H   = 0xc83, /**< 0xc83 - hpmcounter3h  (r/-): User hardware performance monitor 3  counter high word */
-//CSR_HPMCOUNTER4H   = 0xc84, /**< 0xc84 - hpmcounter4h  (r/-): User hardware performance monitor 4  counter high word */
-//CSR_HPMCOUNTER5H   = 0xc85, /**< 0xc85 - hpmcounter5h  (r/-): User hardware performance monitor 5  counter high word */
-//CSR_HPMCOUNTER6H   = 0xc86, /**< 0xc86 - hpmcounter6h  (r/-): User hardware performance monitor 6  counter high word */
-//CSR_HPMCOUNTER7H   = 0xc87, /**< 0xc87 - hpmcounter7h  (r/-): User hardware performance monitor 7  counter high word */
-//CSR_HPMCOUNTER8H   = 0xc88, /**< 0xc88 - hpmcounter8h  (r/-): User hardware performance monitor 8  counter high word */
-//CSR_HPMCOUNTER9H   = 0xc89, /**< 0xc89 - hpmcounter9h  (r/-): User hardware performance monitor 9  counter high word */
-//CSR_HPMCOUNTER10H  = 0xc8a, /**< 0xc8a - hpmcounter10h (r/-): User hardware performance monitor 10 counter high word */
-//CSR_HPMCOUNTER11H  = 0xc8b, /**< 0xc8b - hpmcounter11h (r/-): User hardware performance monitor 11 counter high word */
-//CSR_HPMCOUNTER12H  = 0xc8c, /**< 0xc8c - hpmcounter12h (r/-): User hardware performance monitor 12 counter high word */
-//CSR_HPMCOUNTER13H  = 0xc8d, /**< 0xc8d - hpmcounter13h (r/-): User hardware performance monitor 13 counter high word */
-//CSR_HPMCOUNTER14H  = 0xc8e, /**< 0xc8e - hpmcounter14h (r/-): User hardware performance monitor 14 counter high word */
-//CSR_HPMCOUNTER15H  = 0xc8f, /**< 0xc8f - hpmcounter15h (r/-): User hardware performance monitor 15 counter high word */
-//CSR_HPMCOUNTER16H  = 0xc90, /**< 0xc90 - hpmcounter16h (r/-): User hardware performance monitor 16 counter high word */
-//CSR_HPMCOUNTER17H  = 0xc91, /**< 0xc91 - hpmcounter17h (r/-): User hardware performance monitor 17 counter high word */
-//CSR_HPMCOUNTER18H  = 0xc92, /**< 0xc92 - hpmcounter18h (r/-): User hardware performance monitor 18 counter high word */
-//CSR_HPMCOUNTER19H  = 0xc93, /**< 0xc93 - hpmcounter19h (r/-): User hardware performance monitor 19 counter high word */
-//CSR_HPMCOUNTER20H  = 0xc94, /**< 0xc94 - hpmcounter20h (r/-): User hardware performance monitor 20 counter high word */
-//CSR_HPMCOUNTER21H  = 0xc95, /**< 0xc95 - hpmcounter21h (r/-): User hardware performance monitor 21 counter high word */
-//CSR_HPMCOUNTER22H  = 0xc96, /**< 0xc96 - hpmcounter22h (r/-): User hardware performance monitor 22 counter high word */
-//CSR_HPMCOUNTER23H  = 0xc97, /**< 0xc97 - hpmcounter23h (r/-): User hardware performance monitor 23 counter high word */
-//CSR_HPMCOUNTER24H  = 0xc98, /**< 0xc98 - hpmcounter24h (r/-): User hardware performance monitor 24 counter high word */
-//CSR_HPMCOUNTER25H  = 0xc99, /**< 0xc99 - hpmcounter25h (r/-): User hardware performance monitor 25 counter high word */
-//CSR_HPMCOUNTER26H  = 0xc9a, /**< 0xc9a - hpmcounter26h (r/-): User hardware performance monitor 26 counter high word */
-//CSR_HPMCOUNTER27H  = 0xc9b, /**< 0xc9b - hpmcounter27h (r/-): User hardware performance monitor 27 counter high word */
-//CSR_HPMCOUNTER28H  = 0xc9c, /**< 0xc9c - hpmcounter28h (r/-): User hardware performance monitor 28 counter high word */
-//CSR_HPMCOUNTER29H  = 0xc9d, /**< 0xc9d - hpmcounter29h (r/-): User hardware performance monitor 29 counter high word */
-//CSR_HPMCOUNTER30H  = 0xc9e, /**< 0xc9e - hpmcounter30h (r/-): User hardware performance monitor 30 counter high word */
-//CSR_HPMCOUNTER31H  = 0xc9f, /**< 0xc9f - hpmcounter31h (r/-): User hardware performance monitor 31 counter high word */
+  CSR_HPMCOUNTER3H   = 0xc83, /**< 0xc83 - hpmcounter3h  (r/-): User hardware performance monitor 3  counter high word */
+  CSR_HPMCOUNTER4H   = 0xc84, /**< 0xc84 - hpmcounter4h  (r/-): User hardware performance monitor 4  counter high word */
+  CSR_HPMCOUNTER5H   = 0xc85, /**< 0xc85 - hpmcounter5h  (r/-): User hardware performance monitor 5  counter high word */
+  CSR_HPMCOUNTER6H   = 0xc86, /**< 0xc86 - hpmcounter6h  (r/-): User hardware performance monitor 6  counter high word */
+  CSR_HPMCOUNTER7H   = 0xc87, /**< 0xc87 - hpmcounter7h  (r/-): User hardware performance monitor 7  counter high word */
+  CSR_HPMCOUNTER8H   = 0xc88, /**< 0xc88 - hpmcounter8h  (r/-): User hardware performance monitor 8  counter high word */
+  CSR_HPMCOUNTER9H   = 0xc89, /**< 0xc89 - hpmcounter9h  (r/-): User hardware performance monitor 9  counter high word */
+  CSR_HPMCOUNTER10H  = 0xc8a, /**< 0xc8a - hpmcounter10h (r/-): User hardware performance monitor 10 counter high word */
+  CSR_HPMCOUNTER11H  = 0xc8b, /**< 0xc8b - hpmcounter11h (r/-): User hardware performance monitor 11 counter high word */
+  CSR_HPMCOUNTER12H  = 0xc8c, /**< 0xc8c - hpmcounter12h (r/-): User hardware performance monitor 12 counter high word */
+  CSR_HPMCOUNTER13H  = 0xc8d, /**< 0xc8d - hpmcounter13h (r/-): User hardware performance monitor 13 counter high word */
+  CSR_HPMCOUNTER14H  = 0xc8e, /**< 0xc8e - hpmcounter14h (r/-): User hardware performance monitor 14 counter high word */
+  CSR_HPMCOUNTER15H  = 0xc8f, /**< 0xc8f - hpmcounter15h (r/-): User hardware performance monitor 15 counter high word */
+  CSR_HPMCOUNTER16H  = 0xc90, /**< 0xc90 - hpmcounter16h (r/-): User hardware performance monitor 16 counter high word */
+  CSR_HPMCOUNTER17H  = 0xc91, /**< 0xc91 - hpmcounter17h (r/-): User hardware performance monitor 17 counter high word */
+  CSR_HPMCOUNTER18H  = 0xc92, /**< 0xc92 - hpmcounter18h (r/-): User hardware performance monitor 18 counter high word */
+  CSR_HPMCOUNTER19H  = 0xc93, /**< 0xc93 - hpmcounter19h (r/-): User hardware performance monitor 19 counter high word */
+  CSR_HPMCOUNTER20H  = 0xc94, /**< 0xc94 - hpmcounter20h (r/-): User hardware performance monitor 20 counter high word */
+  CSR_HPMCOUNTER21H  = 0xc95, /**< 0xc95 - hpmcounter21h (r/-): User hardware performance monitor 21 counter high word */
+  CSR_HPMCOUNTER22H  = 0xc96, /**< 0xc96 - hpmcounter22h (r/-): User hardware performance monitor 22 counter high word */
+  CSR_HPMCOUNTER23H  = 0xc97, /**< 0xc97 - hpmcounter23h (r/-): User hardware performance monitor 23 counter high word */
+  CSR_HPMCOUNTER24H  = 0xc98, /**< 0xc98 - hpmcounter24h (r/-): User hardware performance monitor 24 counter high word */
+  CSR_HPMCOUNTER25H  = 0xc99, /**< 0xc99 - hpmcounter25h (r/-): User hardware performance monitor 25 counter high word */
+  CSR_HPMCOUNTER26H  = 0xc9a, /**< 0xc9a - hpmcounter26h (r/-): User hardware performance monitor 26 counter high word */
+  CSR_HPMCOUNTER27H  = 0xc9b, /**< 0xc9b - hpmcounter27h (r/-): User hardware performance monitor 27 counter high word */
+  CSR_HPMCOUNTER28H  = 0xc9c, /**< 0xc9c - hpmcounter28h (r/-): User hardware performance monitor 28 counter high word */
+  CSR_HPMCOUNTER29H  = 0xc9d, /**< 0xc9d - hpmcounter29h (r/-): User hardware performance monitor 29 counter high word */
+  CSR_HPMCOUNTER30H  = 0xc9e, /**< 0xc9e - hpmcounter30h (r/-): User hardware performance monitor 30 counter high word */
+  CSR_HPMCOUNTER31H  = 0xc9f, /**< 0xc9f - hpmcounter31h (r/-): User hardware performance monitor 31 counter high word */
 
   /* machine information registers */
   CSR_MVENDORID      = 0xf11, /**< 0xf11 - mvendorid  (r/-): Vendor ID */
@@ -319,16 +314,6 @@ enum NEORV32_CSR_MSTATUS_enum {
   CSR_MSTATUS_MPP_H = 12, /**< CPU mstatus CSR (12): MPP_H - Machine previous privilege mode bit high (r/w) */
   CSR_MSTATUS_MPRV  = 17, /**< CPU mstatus CSR (17): MPRV - Use MPP as effective privilege for M-mode load/stores when set (r/w) */
   CSR_MSTATUS_TW    = 21  /**< CPU mstatus CSR (21): TW - Disallow execution of wfi instruction in user mode when set (r/w) */
-};
-
-
-/**********************************************************************//**
- * CPU <b>mcounteren</b> CSR (r/w): Machine counter enable
- **************************************************************************/
-enum NEORV32_CSR_MCOUNTEREN_enum {
-  CSR_MCOUNTEREN_CY    = 0, /**< CPU mcounteren CSR (0): CY - Allow access to cycle[h]   CSRs from U-mode when set (r/w) */
-  CSR_MCOUNTEREN_TM    = 1, /**< CPU mcounteren CSR (1): TM - Allow access to time[h]    CSRs from U-mode when set (r/w) */
-  CSR_MCOUNTEREN_IR    = 2  /**< CPU mcounteren CSR (2): IR - Allow access to instret[h] CSRs from U-mode when set (r/w) */
 };
 
 
@@ -460,7 +445,8 @@ enum NEORV32_CSR_XISA_enum {
   CSR_MXISA_ZICNTR    =  7, /**< CPU mxisa CSR  (7): standard instruction, cycle and time counter CSRs (r/-)*/
   CSR_MXISA_PMP       =  8, /**< CPU mxisa CSR  (8): physical memory protection (also "Smpmp") (r/-)*/
   CSR_MXISA_ZIHPM     =  9, /**< CPU mxisa CSR  (9): hardware performance monitors (r/-)*/
-  CSR_MXISA_DEBUGMODE = 10, /**< CPU mxisa CSR (10): RISC-V debug mode (r/-)*/
+  CSR_MXISA_SDEXT     = 10, /**< CPU mxisa CSR (10): RISC-V debug mode (r/-)*/
+  CSR_MXISA_SDTRIG    = 11, /**< CPU mxisa CSR (11): RISC-V trigger module (r/-)*/
 
   // Misc
   CSR_MXISA_IS_SIM    = 20, /**< CPU mxisa CSR (20): this might be a simulation when set (r/-)*/
@@ -694,13 +680,13 @@ enum NEORV32_CLOCK_PRSC_enum {
 /**@{*/
 /** on-chip debugger - debug module prototype */
 typedef struct __attribute__((packed,aligned(4))) {
-  const uint32_t CODE[32];      /**< offset 0: park loop code ROM (r/-) */
-  const uint32_t PBUF[4];       /**< offset 128: program buffer (r/-) */
-  const uint32_t reserved1[28]; /**< offset 144..252: reserved */
-  uint32_t       DATA;          /**< offset 256: data exchange register (r/w) */
-  const uint32_t reserved2[31]; /**< offset 260..380: reserved */
-  uint32_t       SREG;          /**< offset 384: control and status register (r/w) (#NEORV32_OCD_DM_SREG_enum) */
-  const uint32_t reserved3[31]; /**< offset 388..508: reserved */
+  const uint32_t CODE[16];      /**< offset 0: park loop code ROM (r/-) */
+  const uint32_t PBUF[4];       /**< offset 64: program buffer (r/-) */
+  const uint32_t reserved1[12]; /**< reserved */
+  uint32_t       DATA;          /**< offset 128: data exchange register (r/w) */
+  const uint32_t reserved2[15]; /**< reserved */
+  uint32_t       SREG;          /**< offset 192: control and status register (r/w) */
+  const uint32_t reserved3[15]; /**< reserved */
 } neorv32_dm_t;
 
 /** on-chip debugger debug module base address */
@@ -708,16 +694,6 @@ typedef struct __attribute__((packed,aligned(4))) {
 
 /** on-chip debugger debug module hardware access (#neorv32_dm_t) */
 #define NEORV32_DM (*((volatile neorv32_dm_t*) (NEORV32_DM_BASE)))
-
-/** on-chip debugger debug module control and status register bits */
-enum NEORV32_OCD_DM_SREG_enum {
-  OCD_DM_SREG_HALT_ACK      = 0, /**< OCD.DM control and status register(0) (-/w): CPU is halted in debug mode and waits in park loop */
-  OCD_DM_SREG_RESUME_REQ    = 1, /**< OCD.DM control and status register(1) (r/-): DM requests CPU to resume */
-  OCD_DM_SREG_RESUME_ACK    = 2, /**< OCD.DM control and status register(2) (-/w): CPU starts resuming */
-  OCD_DM_SREG_EXECUTE_REQ   = 3, /**< OCD.DM control and status register(3) (r/-): DM requests to execute program buffer */
-  OCD_DM_SREG_EXECUTE_ACK   = 4, /**< OCD.DM control and status register(4) (-/w): CPU starts to execute program buffer */
-  OCD_DM_SREG_EXCEPTION_ACK = 5  /**< OCD.DM control and status register(5) (-/w): CPU has detected an exception */
-};
 /**@}*/
 
 
@@ -1155,28 +1131,27 @@ typedef struct __attribute__((packed,aligned(4))) {
 
 /** SPI control register bits */
 enum NEORV32_SPI_CTRL_enum {
-  SPI_CTRL_CS0       =  0, /**< SPI control register(0)  (r/w): Direct chip select line 0 (output is low when set) */
-  SPI_CTRL_CS1       =  1, /**< SPI control register(1)  (r/w): Direct chip select line 1 (output is low when set) */
-  SPI_CTRL_CS2       =  2, /**< SPI control register(2)  (r/w): Direct chip select line 2 (output is low when set) */
-  SPI_CTRL_CS3       =  3, /**< SPI control register(3)  (r/w): Direct chip select line 3 (output is low when set) */
-  SPI_CTRL_CS4       =  4, /**< SPI control register(4)  (r/w): Direct chip select line 4 (output is low when set) */
-  SPI_CTRL_CS5       =  5, /**< SPI control register(5)  (r/w): Direct chip select line 5 (output is low when set) */
-  SPI_CTRL_CS6       =  6, /**< SPI control register(6)  (r/w): Direct chip select line 6 (output is low when set) */
-  SPI_CTRL_CS7       =  7, /**< SPI control register(7)  (r/w): Direct chip select line 7 (output is low when set) */
-  SPI_CTRL_EN        =  8, /**< SPI control register(8)  (r/w): SPI unit enable */
-  SPI_CTRL_CPHA      =  9, /**< SPI control register(9)  (r/w): Clock phase */
-  SPI_CTRL_PRSC0     = 10, /**< SPI control register(10) (r/w): Clock prescaler select bit 0 */
-  SPI_CTRL_PRSC1     = 11, /**< SPI control register(11) (r/w): Clock prescaler select bit 1 */
-  SPI_CTRL_PRSC2     = 12, /**< SPI control register(12) (r/w): Clock prescaler select bit 2 */
-  SPI_CTRL_SIZE0     = 13, /**< SPI control register(13) (r/w): Transfer data size lsb (00: 8-bit, 01: 16-bit, 10: 24-bit, 11: 32-bit) */
-  SPI_CTRL_SIZE1     = 14, /**< SPI control register(14) (r/w): Transfer data size msb (00: 8-bit, 01: 16-bit, 10: 24-bit, 11: 32-bit) */
-  SPI_CTRL_CPOL      = 15, /**< SPI control register(15) (r/w): Clock polarity */
-  SPI_CTRL_HIGHSPEED = 16, /**< SPI control register(16) (r/w): SPI high-speed mode enable (ignoring SPI_CTRL_PRSC) */
-  SPI_CTRL_IRQ0      = 17, /**< SPI control register(17) (r/w): Interrupt configuration lsb (0-: PHY going idle) */
-  SPI_CTRL_IRQ1      = 18, /**< SPI control register(18) (r/w): Interrupt configuration lsb (10: TX fifo less than half full, 11: TX fifo empty) */
-  SPI_CTRL_FIFO_LSB  = 19, /**< SPI control register(19) (r/-): log2(FIFO size), lsb */
-  SPI_CTRL_FIFO_MSB  = 22, /**< SPI control register(22) (r/-): log2(FIFO size), msb */
+  SPI_CTRL_EN        =  0, /**< SPI control register(0)  (r/w): SPI unit enable */
+  SPI_CTRL_CPHA      =  1, /**< SPI control register(1)  (r/w): Clock phase */
+  SPI_CTRL_CPOL      =  2, /**< SPI control register(2)  (r/w): Clock polarity */
+  SPI_CTRL_SIZE0     =  3, /**< SPI control register(3)  (r/w): Transfer data size lsb (00: 8-bit, 01: 16-bit, 10: 24-bit, 11: 32-bit) */
+  SPI_CTRL_SIZE1     =  4, /**< SPI control register(4)  (r/w): Transfer data size msb (00: 8-bit, 01: 16-bit, 10: 24-bit, 11: 32-bit) */
+  SPI_CTRL_CS_SEL0   =  5, /**< SPI control register(5)  (r/w): Direct chip select bit 1 */
+  SPI_CTRL_CS_SEL1   =  6, /**< SPI control register(6)  (r/w): Direct chip select bit 2 */
+  SPI_CTRL_CS_SEL2   =  7, /**< SPI control register(7)  (r/w): Direct chip select bit 2 */
+  SPI_CTRL_CS_EN     =  8, /**< SPI control register(8)  (r/w): Chip select enable (selected CS line output is low when set) */
+  SPI_CTRL_PRSC0     =  9, /**< SPI control register(9)  (r/w): Clock prescaler select bit 0 */
+  SPI_CTRL_PRSC1     = 10, /**< SPI control register(10) (r/w): Clock prescaler select bit 1 */
+  SPI_CTRL_PRSC2     = 11, /**< SPI control register(11) (r/w): Clock prescaler select bit 2 */
+  SPI_CTRL_CDIV0     = 12, /**< SPI control register(12) (r/w): Clock divider bit 0 */
+  SPI_CTRL_CDIV1     = 13, /**< SPI control register(13) (r/w): Clock divider bit 1 */
+  SPI_CTRL_CDIV2     = 14, /**< SPI control register(14) (r/w): Clock divider bit 2 */
+  SPI_CTRL_CDIV3     = 15, /**< SPI control register(15) (r/w): Clock divider bit 3 */
+  SPI_CTRL_IRQ0      = 16, /**< SPI control register(16) (r/w): Interrupt configuration lsb (0-: PHY going idle) */
+  SPI_CTRL_IRQ1      = 17, /**< SPI control register(17) (r/w): Interrupt configuration lsb (10: TX fifo less than half full, 11: TX fifo empty) */
 
+  SPI_CTRL_FIFO_LSB  = 23, /**< SPI control register(23) (r/-): log2(FIFO size), lsb */
+  SPI_CTRL_FIFO_MSB  = 26, /**< SPI control register(26) (r/-): log2(FIFO size), msb */
   SPI_CTRL_RX_AVAIL  = 27, /**< SPI control register(27) (r/-): RX FIFO data available (RX FIFO not empty) */
   SPI_CTRL_TX_EMPTY  = 28, /**< SPI control register(28) (r/-): TX FIFO empty */
   SPI_CTRL_TX_HALF   = 29, /**< SPI control register(29) (r/-): TX FIFO at least half full */
@@ -1204,13 +1179,18 @@ typedef struct __attribute__((packed,aligned(4))) {
 
 /** TWI control register bits */
 enum NEORV32_TWI_CTRL_enum {
-  TWI_CTRL_EN      =  0, /**< TWI control register(0) (r/w): TWI enable */
-  TWI_CTRL_START   =  1, /**< TWI control register(1) (-/w): Generate START condition, auto-clears */
-  TWI_CTRL_STOP    =  2, /**< TWI control register(2) (-/w): Generate STOP condition, auto-clears */
-  TWI_CTRL_PRSC0   =  3, /**< TWI control register(3) (r/w): Clock prescaler select bit 0 */
-  TWI_CTRL_PRSC1   =  4, /**< TWI control register(4) (r/w): Clock prescaler select bit 1 */
-  TWI_CTRL_PRSC2   =  5, /**< TWI control register(5) (r/w): Clock prescaler select bit 2 */
-  TWI_CTRL_MACK    =  6, /**< TWI control register(6) (r/w): Generate ACK by controller for each transmission */
+  TWI_CTRL_EN      =  0, /**< TWI control register(0)  (r/w): TWI enable */
+  TWI_CTRL_START   =  1, /**< TWI control register(1)  (-/w): Generate START condition, auto-clears */
+  TWI_CTRL_STOP    =  2, /**< TWI control register(2)  (-/w): Generate STOP condition, auto-clears */
+  TWI_CTRL_MACK    =  3, /**< TWI control register(3)  (r/w): Generate ACK by controller for each transmission */
+  TWI_CTRL_CSEN    =  4, /**< TWI control register(4)  (r/w): Allow clock stretching when set */
+  TWI_CTRL_PRSC0   =  5, /**< TWI control register(5)  (r/w): Clock prescaler select bit 0 */
+  TWI_CTRL_PRSC1   =  6, /**< TWI control register(6)  (r/w): Clock prescaler select bit 1 */
+  TWI_CTRL_PRSC2   =  7, /**< TWI control register(7)  (r/w): Clock prescaler select bit 2 */
+  TWI_CTRL_CDIV0   =  8, /**< TWI control register(8)  (r/w): Clock divider bit 0 */
+  TWI_CTRL_CDIV1   =  9, /**< TWI control register(9)  (r/w): Clock divider bit 1 */
+  TWI_CTRL_CDIV2   = 10, /**< TWI control register(10) (r/w): Clock divider bit 2 */
+  TWI_CTRL_CDIV3   = 11, /**< TWI control register(11) (r/w): Clock divider bit 3 */
 
   TWI_CTRL_CLAIMED = 29, /**< TWI control register(29) (r/-): Set if the TWI bus is currently claimed by any controller */
   TWI_CTRL_ACK     = 30, /**< TWI control register(30) (r/-): ACK received when set */
@@ -1259,7 +1239,7 @@ enum NEORV32_TRNG_CTRL_enum {
 /**@{*/
 /** WDT module prototype */
 typedef struct __attribute__((packed,aligned(4))) {
-  uint32_t CTRL;  /**< offset 0: control register (#NEORV32_WDT_CTRL_enum) */
+  uint32_t CTRL; /**< offset 0: control register (#NEORV32_WDT_CTRL_enum) */
 } neorv32_wdt_t;
 
 /** WDT module base address */
@@ -1268,26 +1248,17 @@ typedef struct __attribute__((packed,aligned(4))) {
 /** WDT module hardware access (#neorv32_wdt_t) */
 #define NEORV32_WDT (*((volatile neorv32_wdt_t*) (NEORV32_WDT_BASE)))
 
-/** WDT access password */
-#define NEORV32_WDT_PWD (0xCA36)
-
 /** WDT control register bits */
 enum NEORV32_WDT_CTRL_enum {
-  WDT_CTRL_EN       =  0, /**< WDT control register(0) (r/w): Watchdog enable */
-  WDT_CTRL_CLK_SEL0 =  1, /**< WDT control register(1) (r/w): Clock prescaler select bit 0 */
-  WDT_CTRL_CLK_SEL1 =  2, /**< WDT control register(2) (r/w): Clock prescaler select bit 1 */
-  WDT_CTRL_CLK_SEL2 =  3, /**< WDT control register(3) (r/w): Clock prescaler select bit 2 */
-  WDT_CTRL_MODE     =  4, /**< WDT control register(4) (r/w): Watchdog mode: 0=timeout causes interrupt, 1=timeout causes processor reset */
-  WDT_CTRL_RCAUSE   =  5, /**< WDT control register(5) (r/-): Cause of last system reset: 0=external reset, 1=watchdog */
-  WDT_CTRL_RESET    =  6, /**< WDT control register(6) (-/w): Reset WDT counter when set, auto-clears */
-  WDT_CTRL_FORCE    =  7, /**< WDT control register(7) (-/w): Force WDT action, auto-clears */
-  WDT_CTRL_LOCK     =  8, /**< WDT control register(8) (r/w): Lock write access to control register, clears on reset (HW or WDT) only */
-  WDT_CTRL_DBEN     =  9, /**< WDT control register(9) (r/w): Allow WDT to continue operation even when in debug mode */
-  WDT_CTRL_HALF     = 10, /**< WDT control register(10) (r/-): Set if at least half of the max. timeout counter value has been reached */
-  WDT_CTRL_PAUSE    = 11, /**< WDT control register(11) (r/w): Pause WDT when CPU is in sleep mode */
+  WDT_CTRL_EN          =  0, /**< WDT control register(0) (r/w): Watchdog enable */
+  WDT_CTRL_LOCK        =  1, /**< WDT control register(1) (r/w): Lock write access to control register, clears on reset only */
+  WDT_CTRL_DBEN        =  2, /**< WDT control register(2) (r/w): Allow WDT to continue operation even when CPU is in debug mode */
+  WDT_CTRL_SEN         =  3, /**< WDT control register(3) (r/w): Allow WDT to continue operation even when CPU is in sleep mode */
+  WDT_CTRL_RESET       =  4, /**< WDT control register(4) (-/w): Reset WDT counter when set, auto-clears */
+  WDT_CTRL_RCAUSE      =  5, /**< WDT control register(5) (r/-): Cause of last system reset: 0=external reset, 1=watchdog */
 
-  WDT_CTRL_PWD_LSB  = 16, /**< WDT control register(16) (-/w): Watchdog access password, LSB ("NEORV32_WDT_PWD") */
-  WDT_CTRL_PWD_MSB  = 31  /**< WDT control register(31) (-/w): Watchdog access password, MSB ("NEORV32_WDT_PWD") */
+  WDT_CTRL_TIMEOUT_LSB =  8, /**< WDT control register(8)  (r/w): Timeout value, LSB */
+  WDT_CTRL_TIMEOUT_MSB = 31  /**< WDT control register(31) (r/w): Timeout value, MSB */
 };
 /**@}*/
 
@@ -1418,7 +1389,7 @@ enum NEORV32_SYSINFO_SOC_enum {
   SYSINFO_SOC_IO_XIRQ        = 28, /**< SYSINFO_FEATURES (28) (r/-): External interrupt controller implemented when 1 (via XIRQ_NUM_IO generic) */
   SYSINFO_SOC_IO_GPTMR       = 29, /**< SYSINFO_FEATURES (29) (r/-): General purpose timer implemented when 1 (via IO_GPTMR_EN generic) */
   SYSINFO_SOC_IO_XIP         = 30, /**< SYSINFO_FEATURES (30) (r/-): Execute in place module implemented when 1 (via IO_XIP_EN generic) */
-  SYSINFO_SOC_IO_ONEWIRE     = 30  /**< SYSINFO_FEATURES (31) (r/-): 1-wire interface controller implemented when 1 (via IO_ONEWIRE_EN generic) */
+  SYSINFO_SOC_IO_ONEWIRE     = 31  /**< SYSINFO_FEATURES (31) (r/-): 1-wire interface controller implemented when 1 (via IO_ONEWIRE_EN generic) */
 };
 
 /** NEORV32_SYSINFO.CACHE (r/-): Cache configuration */
@@ -1475,6 +1446,9 @@ enum NEORV32_SYSINFO_SOC_enum {
 #include "neorv32_wdt.h"
 #include "neorv32_xip.h"
 #include "neorv32_xirq.h"
+
+// backwards compatibility layer
+#include "legacy.h"
 
 #ifdef __cplusplus
 }

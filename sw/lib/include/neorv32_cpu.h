@@ -3,7 +3,7 @@
 // # ********************************************************************************************* #
 // # BSD 3-Clause License                                                                          #
 // #                                                                                               #
-// # Copyright (c) 2022, Stephan Nolting. All rights reserved.                                     #
+// # Copyright (c) 2023, Stephan Nolting. All rights reserved.                                     #
 // #                                                                                               #
 // # Redistribution and use in source and binary forms, with or without modification, are          #
 // # permitted provided that the following conditions are met:                                     #
@@ -42,13 +42,10 @@
 #define neorv32_cpu_h
 
 // prototypes
-int      neorv32_cpu_irq_enable(uint8_t irq_sel);
-int      neorv32_cpu_irq_disable(uint8_t irq_sel);
 uint64_t neorv32_cpu_get_cycle(void);
 void     neorv32_cpu_set_mcycle(uint64_t value);
 uint64_t neorv32_cpu_get_instret(void);
 void     neorv32_cpu_set_minstret(uint64_t value);
-uint64_t neorv32_cpu_get_systime(void);
 void     neorv32_cpu_delay_ms(uint32_t time_ms);
 uint32_t neorv32_cpu_get_clk_from_prsc(int prsc);
 uint32_t neorv32_cpu_pmp_get_num_regions(void);
@@ -68,7 +65,7 @@ extern void __attribute__ ((weak)) __neorv32_crt0_after_main(int32_t return_code
 
 
 /**********************************************************************//**
- * Conditional store unsigned word to address space.
+ * Store unsigned word to address space.
  *
  * @note An unaligned access address will raise an alignment exception.
  *
@@ -208,7 +205,7 @@ inline int8_t __attribute__ ((always_inline)) neorv32_cpu_load_signed_byte(uint3
 
 
 /**********************************************************************//**
- * Read data from CPU configuration and status register (CSR).
+ * Read data from CPU control and status register (CSR).
  *
  * @param[in] csr_id ID of CSR to read. See #NEORV32_CSR_enum.
  * @return Read data (uint32_t).
@@ -224,7 +221,7 @@ inline uint32_t __attribute__ ((always_inline)) neorv32_cpu_csr_read(const int c
 
 
 /**********************************************************************//**
- * Write data to CPU configuration and status register (CSR).
+ * Write data to CPU control and status register (CSR).
  *
  * @param[in] csr_id ID of CSR to write. See #NEORV32_CSR_enum.
  * @param[in] data Data to write (uint32_t).
@@ -234,6 +231,34 @@ inline void __attribute__ ((always_inline)) neorv32_cpu_csr_write(const int csr_
   uint32_t csr_data = data;
 
   asm volatile ("csrw %[input_i], %[input_j]" :  : [input_i] "i" (csr_id), [input_j] "r" (csr_data));
+}
+
+
+/**********************************************************************//**
+ * Set bit(s) in CPU control and status register (CSR).
+ *
+ * @param[in] csr_id ID of CSR to write. See #NEORV32_CSR_enum.
+ * @param[in] mask Bit mask (high-active) to set bits (uint32_t).
+ **************************************************************************/
+inline void __attribute__ ((always_inline)) neorv32_cpu_csr_set(const int csr_id, uint32_t mask) {
+
+  uint32_t csr_data = mask;
+
+  asm volatile ("csrs %[input_i], %[input_j]" :  : [input_i] "i" (csr_id), [input_j] "r" (csr_data));
+}
+
+
+/**********************************************************************//**
+ * Clear bit(s) in CPU control and status register (CSR).
+ *
+ * @param[in] csr_id ID of CSR to write. See #NEORV32_CSR_enum.
+ * @param[in] mask Bit mask (high-active) to clear bits (uint32_t).
+ **************************************************************************/
+inline void __attribute__ ((always_inline)) neorv32_cpu_csr_clr(const int csr_id, uint32_t mask) {
+
+  uint32_t csr_data = mask;
+
+  asm volatile ("csrc %[input_i], %[input_j]" :  : [input_i] "i" (csr_id), [input_j] "r" (csr_data));
 }
 
 
@@ -250,42 +275,6 @@ inline void __attribute__ ((always_inline)) neorv32_cpu_csr_write(const int csr_
 inline void __attribute__ ((always_inline)) neorv32_cpu_sleep(void) {
 
   asm volatile ("wfi");
-}
-
-
-/**********************************************************************//**
- * Enable global CPU interrupts (via MIE flag in mstatus CSR).
- **************************************************************************/
-inline void __attribute__ ((always_inline)) neorv32_cpu_eint(void) {
-
-  asm volatile ("csrrsi zero, mstatus, %0" : : "i" (1 << CSR_MSTATUS_MIE));
-}
-
-
-/**********************************************************************//**
- * Disable global CPU interrupts (via MIE flag in mstatus CSR).
- **************************************************************************/
-inline void __attribute__ ((always_inline)) neorv32_cpu_dint(void) {
-
-  asm volatile ("csrrci zero, mstatus, %0" : : "i" (1 << CSR_MSTATUS_MIE));
-}
-
-
-/**********************************************************************//**
- * Trigger breakpoint exception (via EBREAK instruction).
- **************************************************************************/
-inline void __attribute__ ((always_inline)) neorv32_cpu_breakpoint(void) {
-
-  asm volatile ("ebreak");
-}
-
-
-/**********************************************************************//**
- * Trigger "environment call" exception (via ECALL instruction).
- **************************************************************************/
-inline void __attribute__ ((always_inline)) neorv32_cpu_env_call(void) {
-
-  asm volatile ("ecall");
 }
 
 
